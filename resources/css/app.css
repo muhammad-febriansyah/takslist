@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+@source '../views';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+
+@theme {
+    --font-sans:
+        'Poppins', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+    --background: #f8faf7;
+    --foreground: #173d30;
+    --card: #ffffff;
+    --card-foreground: #173d30;
+    --popover: #ffffff;
+    --popover-foreground: #173d30;
+    --primary: #2d875c;
+    --primary-foreground: #ffffff;
+    --secondary: #eaf6ee;
+    --secondary-foreground: #236d49;
+    --muted: #f3f8f5;
+    --muted-foreground: #71877b;
+    --accent: #eaf6ee;
+    --accent-foreground: #236d49;
+    --destructive: #e34f4f;
+    --destructive-foreground: #ffffff;
+    --border: #dfeae3;
+    --input: #dfeae3;
+    --ring: #7cba95;
+    --chart-1: #2d875c;
+    --chart-2: #67ae7f;
+    --chart-3: #9dc995;
+    --chart-4: #e79b28;
+    --chart-5: #e34f4f;
+    --radius: 0.625rem;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #173d30;
+    --sidebar-primary: #2d875c;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #eaf6ee;
+    --sidebar-accent-foreground: #236d49;
+    --sidebar-border: #dfeae3;
+    --sidebar-ring: #7cba95;
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background font-sans text-foreground;
+    }
+}

@@ -1,0 +1,133 @@
+<?php
+
+namespace App\Providers;
+
+use App\Actions\Fortify\CreateNewUser;
+use App\Actions\Fortify\ResetUserPassword;
+use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Laravel\Fortify\Features;
+use Laravel\Fortify\Fortify;
+use Laravel\Passkeys\Contracts\PasskeyUser;
+use Laravel\Passkeys\Passkey;
+use Laravel\Passkeys\Passkeys;
+
+class FortifyServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     */
+    public function register(): void
+    {
+        //
+    }
+
+    /**
+     * Bootstrap any application services.
+     */
+    public function boot(): void
+    {
+        $this->configureActions();
+        $this->configureAuthentication();
+        $this->configureViews();
+        $this->configureRateLimiting();
+    }
+
+    /**
+     * Configure Fortify actions.
+     */
+    private function configureActions(): void
+    {
+        Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+        Fortify::createUsersUsing(CreateNewUser::class);
+    }
+
+    /**
+     * Reject inactive accounts before Fortify creates an authenticated session.
+     */
+    private function configureAuthentication(): void
+    {
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            $user = User::query()->where('email', $request->string('email')->toString())->first();
+
+            return $user !== null
+                && $user->is_active
+                && Hash::check($request->string('password')->toString(), $user->password)
+                ? $user
+                : null;
+        });
+
+        Passkeys::authorizeLoginUsing(function (Request $request, PasskeyUser $user, Passkey $passkey): bool {
+            if (! $user instanceof User || ! $user->is_active) {
+                throw ValidationException::withMessages([
+                    'credential' => 'Akun sedang dinonaktifkan. Hubungi admin untuk mengaktifkannya kembali.',
+                ]);
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * Configure Fortify views.
+     */
+    private function configureViews(): void
+    {
+        Fortify::loginView(fn (Request $request) => Inertia::render('auth/login', [
+            'canResetPassword' => Features::enabled(Features::resetPasswords()),
+            'status' => $request->session()->get('status'),
+        ]));
+
+        Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/reset-password', [
+            'email' => $request->email,
+            'token' => $request->route('token'),
+            'passwordRules' => Password::defaults()->toPasswordRulesString(),
+        ]));
+
+        Fortify::requestPasswordResetLinkView(fn (Request $request) => Inertia::render('auth/forgot-password', [
+            'status' => $request->session()->get('status'),
+        ]));
+
+        Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/verify-email', [
+            'status' => $request->session()->get('status'),
+        ]));
+
+        Fortify::registerView(fn () => Inertia::render('auth/register', [
+            'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            'supervisors' => User::query()
+                ->where('role', 'atasan')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'position']),
+        ]));
+
+        Fortify::confirmPasswordView(fn () => Inertia::render('auth/confirm-password'));
+    }
+
+    /**
+     * Configure rate limiting.
+     */
+    private function configureRateLimiting(): void
+    {
+
+        RateLimiter::for('login', function (Request $request) {
+            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
+
+            return Limit::perMinute(5)->by($throttleKey);
+        });
+
+        RateLimiter::for('passkeys', function (Request $request) {
+            return Limit::perMinute(10)->by(
+                ($request->input('credential.id') ?: $request->session()->getId()).'|'.$request->ip(),
+            );
+        });
+    }
+}
