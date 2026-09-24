@@ -67,20 +67,21 @@ return [
         'osticket' => [
             'driver' => 'mysql',
             'url' => env('OSTICKET_DB_URL'),
-            'host' => env('OSTICKET_DB_HOST', 'localhost'),
+            'host' => env('OSTICKET_DB_HOST', '127.0.0.1'),
             'port' => env('OSTICKET_DB_PORT', '3306'),
             'database' => env('OSTICKET_DB_DATABASE', 'osticket'),
-            'username' => env('OSTICKET_DB_USERNAME', 'osticket'),
+            'username' => env('OSTICKET_DB_USERNAME', ''),
             'password' => env('OSTICKET_DB_PASSWORD', ''),
             'unix_socket' => env('OSTICKET_DB_SOCKET', ''),
             'charset' => env('OSTICKET_DB_CHARSET', 'utf8mb4'),
             'collation' => env('OSTICKET_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            // osTicket table prefix is applied by the integration service.
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('OSTICKET_MYSQL_ATTR_SSL_CA'),
+                Mysql::ATTR_SSL_CA => env('OSTICKET_DB_SSL_CA'),
             ]) : [],
         ],
 

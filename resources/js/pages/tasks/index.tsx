@@ -10,12 +10,14 @@ import {
 } from 'react';
 import {
     CalendarDays,
+    ClipboardList,
     Download,
     Eraser,
     Eye,
     Flag,
     GripVertical,
     List,
+    Maximize2,
     MoreHorizontal,
     Pencil,
     PenLine,
@@ -25,6 +27,7 @@ import {
     SquareKanban,
     Ticket,
     Trash2,
+    Minimize2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -51,7 +54,7 @@ import {
     bulkDestroy as bulkDestroyTasks,
 } from '@/routes/tasks';
 import { timesheet as exportTimesheet } from '@/routes/tasks/export';
-import { store as submitTaskReview } from '@/routes/tasks/review';
+import { store as storeTimesheetSubmission } from '@/routes/tasks/timesheet-submissions';
 import osticketRoutes from '@/routes/tasks/osticket';
 
 type Task = {
@@ -86,6 +89,28 @@ type Props = {
     period?: string;
     users?: Array<{ id: number; name: string }>;
     export_approver?: { id: number; name: string; role: 'admin' | 'atasan' | 'bawahan'; position: string | null } | null;
+    submission_search?: string;
+    submission_status?: string;
+    timesheet_submissions?: {
+        data: TimesheetSubmission[];
+        current_page: number;
+        last_page: number;
+        from: number | null;
+        to: number | null;
+        total: number;
+    };
+};
+
+type TimesheetSubmission = {
+    id: number;
+    period: string;
+    status: 'pending' | 'approved' | 'rejected';
+    department: string;
+    client: string | null;
+    approved_by: string;
+    approved_role: string | null;
+    submitted_at: string | null;
+    can_download: boolean;
 };
 
 type OsticketTicket = {
@@ -110,6 +135,9 @@ type OsticketPreview = {
 const tasksTableFeatures = tableFeatures({ columnFilteringFeature, globalFilteringFeature });
 type TasksTableFeatures = typeof tasksTableFeatures;
 const taskColumnHelper = createColumnHelper<TasksTableFeatures, Task>();
+const submissionsTableFeatures = tableFeatures({});
+type SubmissionsTableFeatures = typeof submissionsTableFeatures;
+const submissionColumnHelper = createColumnHelper<SubmissionsTableFeatures, TimesheetSubmission>();
 
 const columns = [
     { key: 'todo', label: 'To Do', tone: 'bg-[#f1f5f2]', dot: 'bg-[#8b9b92]' },
@@ -141,6 +169,18 @@ const taskStatusStyles = {
     done: 'border-[#a9d7b9] border-l-[#2d875c] bg-[#f1faf4]',
 };
 
+const submissionStatusLabels = {
+    pending: 'Menunggu approval',
+    approved: 'Approved',
+    rejected: 'Rejected',
+} satisfies Record<TimesheetSubmission['status'], string>;
+
+const submissionStatusClasses = {
+    pending: 'bg-[#fff8e8] text-[#9a6720]',
+    approved: 'bg-[#eaf6ee] text-[#236d49]',
+    rejected: 'bg-[#fff0f0] text-[#c45c5c]',
+} satisfies Record<TimesheetSubmission['status'], string>;
+
 function formatDate(date: string | null): string {
     if (!date) {
         return 'Tanpa tanggal';
@@ -166,50 +206,6 @@ function formatMonth(period: string): string {
     }).format(new Date(`${period.slice(0, 7)}-01T00:00:00`));
 }
 
-function ReviewMeta({ task, compact = false }: { task: Task; compact?: boolean }) {
-    if (!task.supervisor && !task.review) {
-        return null;
-    }
-
-    const status = task.review?.status;
-    const statusLabel = status === 'pending'
-        ? 'Menunggu review'
-        : status === 'approved'
-            ? 'Disetujui'
-            : status === 'rejected'
-                ? 'Dikembalikan'
-                : 'Belum diajukan';
-    const statusClass = status === 'approved'
-        ? 'bg-[#eaf6ee] text-[#28754d]'
-        : status === 'rejected'
-            ? 'bg-[#fff1f1] text-[#c44f4f]'
-            : status === 'pending'
-                ? 'bg-[#fff8e8] text-[#9a762a]'
-                : 'bg-[#f3f8f5] text-[#71877b]';
-    const targetName = task.review?.reviewer?.name ?? task.supervisor?.name;
-
-    return (
-        <div className={`mt-3 rounded-lg border border-[#e8f0ea] bg-[#fbfdfb] ${compact ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold text-[#557067]">Pengajuan review</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}>{statusLabel}</span>
-            </div>
-            <p className="mt-1 text-[11px] text-[#8aa097]">
-                Ke: <span className="font-medium text-[#557067]">{targetName ?? 'Belum ada atasan'}</span>
-            </p>
-            {task.review?.signature_url && task.review.status === 'approved' && (
-                <a
-                    href={task.review.signature_url}
-                    download
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-[#eaf4fb] px-2.5 py-1.5 text-[10px] font-semibold text-[#3f79ad] hover:bg-[#dcecf9]"
-                >
-                    <Download className="size-3" /> Download tanda tangan
-                </a>
-            )}
-        </div>
-    );
-}
-
 function TaskCard({
     task,
     isDragging,
@@ -223,7 +219,6 @@ function TaskCard({
     onEdit,
     onDelete,
     canEdit,
-    onSubmitReview,
 }: {
     task: Task;
     isDragging: boolean;
@@ -237,7 +232,6 @@ function TaskCard({
     onEdit: (task: Task) => void;
     onDelete: (task: Task) => void;
     canEdit: boolean;
-    onSubmitReview: (task: Task) => void;
 }) {
     const priority = priorityStyles[task.priority];
     const progress =
@@ -331,7 +325,6 @@ function TaskCard({
                     {formatDate(task.due_date)}
                 </span>
             </div>
-            <ReviewMeta task={task} />
             {progress && (
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-[#71877b]">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eaf1ec]">
@@ -345,23 +338,19 @@ function TaskCard({
                     </span>
                 </div>
             )}
-            {task.can_submit_review && (
-                <button type="button" onClick={() => onSubmitReview(task)} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#eef8f1] px-3 py-1.5 text-[11px] font-semibold text-[#28754d] hover:bg-[#e0f2e6]">
-                    <PenLine className="size-3.5" />
-                    Ajukan review
-                </button>
-            )}
         </article>
     );
 }
 
-export default function Tasks({ tasks, search: initialSearch = '', user_id: initialUserId = null, period: initialPeriod = getTodayValue().slice(0, 7), users = [], export_approver: exportApprover = null }: Props) {
+export default function Tasks({ tasks, search: initialSearch = '', user_id: initialUserId = null, period: initialPeriod = getTodayValue().slice(0, 7), users = [], export_approver: exportApprover = null, submission_search: initialSubmissionSearch = '', submission_status: initialSubmissionStatus = '', timesheet_submissions: timesheetSubmissions = { data: [], current_page: 1, last_page: 1, from: null, to: null, total: 0 } }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const canManageTasks = auth.user.role !== 'admin';
     const usesSupervisorApproval = auth.user.role === 'bawahan';
     const [boardTasks, setBoardTasks] = useState(tasks);
-    const [view, setView] = useState<'board' | 'list'>('board');
+    const [view, setView] = useState<'board' | 'list' | 'submissions'>('board');
     const [query, setQuery] = useState(initialSearch);
+    const [submissionSearch, setSubmissionSearch] = useState(initialSubmissionSearch);
+    const [submissionStatusFilter, setSubmissionStatusFilter] = useState(initialSubmissionStatus || 'all');
     const [taskPeriod, setTaskPeriod] = useState(initialPeriod);
     const [priorityFilter, setPriorityFilter] = useState('all');
     const [userFilter, setUserFilter] = useState(initialUserId ? String(initialUserId) : 'all');
@@ -375,11 +364,15 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [selectedDate, setSelectedDate] = useState('');
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [selectedSubmissionForExport, setSelectedSubmissionForExport] = useState<TimesheetSubmission | null>(null);
+    const [isTasksFullscreen, setIsTasksFullscreen] = useState(false);
+    const [isOsticketPeriodOpen, setIsOsticketPeriodOpen] = useState(false);
     const [isOsticketOpen, setIsOsticketOpen] = useState(false);
     const [isOsticketLoading, setIsOsticketLoading] = useState(false);
     const [isOsticketImporting, setIsOsticketImporting] = useState(false);
     const [osticketPreview, setOsticketPreview] = useState<OsticketPreview | null>(null);
     const [selectedOsticketIds, setSelectedOsticketIds] = useState<number[]>([]);
+    const [osticketPeriod, setOsticketPeriod] = useState(`${initialPeriod}-01`);
     const [department, setDepartment] = useState('');
     const [client, setClient] = useState(exportApprover?.name ?? 'SIM');
     const [approvedBy, setApprovedBy] = useState(exportApprover?.name ?? '');
@@ -394,6 +387,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [isDownloading, setIsDownloading] = useState(false);
     const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
     const isDrawingSignature = useRef(false);
+    const selectAllOsticketRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         setBoardTasks(tasks);
@@ -405,6 +399,67 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     useEffect(() => {
         setQuery(initialSearch);
     }, [initialSearch]);
+
+    useEffect(() => {
+        setSubmissionSearch(initialSubmissionSearch);
+        setSubmissionStatusFilter(initialSubmissionStatus || 'all');
+    }, [initialSubmissionSearch, initialSubmissionStatus]);
+
+    useEffect(() => {
+        if (view !== 'submissions') {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            router.visit(tasksIndex.url({
+                query: {
+                    period: taskPeriod,
+                    user_id: userFilter === 'all' ? undefined : userFilter,
+                    submission_search: submissionSearch || undefined,
+                    submission_status: submissionStatusFilter === 'all' ? undefined : submissionStatusFilter,
+                    submission_page: undefined,
+                },
+            }), {
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            });
+        }, 350);
+
+        return () => window.clearTimeout(timer);
+    }, [submissionSearch, submissionStatusFilter, taskPeriod, userFilter, view]);
+
+    useEffect(() => {
+        if (!isTasksFullscreen) {
+            return;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        const handleKeyDown = (event: KeyboardEvent): void => {
+            if (event.key === 'Escape') {
+                setIsTasksFullscreen(false);
+            }
+        };
+
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isTasksFullscreen]);
+
+    useEffect(() => {
+        const checkbox = selectAllOsticketRef.current;
+        const ticketCount = osticketPreview?.tickets.length ?? 0;
+
+        if (!checkbox) {
+            return;
+        }
+
+        checkbox.indeterminate = selectedOsticketIds.length > 0 && selectedOsticketIds.length < ticketCount;
+    }, [osticketPreview, selectedOsticketIds]);
 
     useEffect(() => {
         setUserFilter(initialUserId ? String(initialUserId) : 'all');
@@ -454,7 +509,6 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const listPageSize = 10;
     const listPageCount = Math.max(1, Math.ceil(filteredTasks.length / listPageSize));
     const paginatedTasks = filteredTasks.slice((listPage - 1) * listPageSize, listPage * listPageSize);
-
     useEffect(() => {
         setListPage(1);
     }, [query, priorityFilter, userFilter]);
@@ -537,11 +591,6 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             ),
         }),
         taskColumnHelper.display({
-            id: 'review',
-            header: 'Pengajuan',
-            cell: ({ row }) => <ReviewMeta task={row.original} compact />,
-        }),
-        taskColumnHelper.display({
             id: 'actions',
             header: () => <span className="block text-right">Aksi</span>,
             cell: ({ row }) => (
@@ -568,9 +617,74 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const previewTasks = boardTasks.filter((task) =>
         task.due_date?.startsWith(period.slice(0, 7)),
     );
-    const canDownloadTimesheet = !usesSupervisorApproval
-        || (previewTasks.length > 0
-            && previewTasks.every((task) => task.review?.status === 'approved' && task.review.signature_url));
+    const canDownloadTimesheet = selectedSubmissionForExport !== null
+        ? selectedSubmissionForExport.can_download
+        : !usesSupervisorApproval
+            || (previewTasks.length > 0
+                && previewTasks.every((task) => task.review?.status === 'approved' && task.review.signature_url));
+    const submissionTableColumns = submissionColumnHelper.columns([
+        submissionColumnHelper.accessor('period', {
+            header: 'Periode',
+            cell: ({ row }) => <span className="text-sm font-semibold text-[#173d30]">{formatMonth(row.original.period)}</span>,
+        }),
+        submissionColumnHelper.accessor('status', {
+            header: 'Status',
+            cell: ({ row }) => (
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${submissionStatusClasses[row.original.status]}`}>
+                    {submissionStatusLabels[row.original.status]}
+                </span>
+            ),
+        }),
+        submissionColumnHelper.accessor('department', {
+            header: 'Departemen',
+        }),
+        submissionColumnHelper.accessor('approved_by', {
+            header: 'Approved By',
+            cell: ({ row }) => (
+                <div>
+                    <p className="text-sm text-[#557067]">{row.original.approved_by}</p>
+                    <p className="mt-1 text-xs text-[#9aac9f]">{row.original.approved_role ?? 'Atasan'}</p>
+                </div>
+            ),
+        }),
+        submissionColumnHelper.accessor('submitted_at', {
+            header: 'Diajukan',
+            cell: ({ row }) => <span className="text-xs text-[#71877b]">{row.original.submitted_at ? formatDate(row.original.submitted_at.slice(0, 10)) : 'Tanpa tanggal'}</span>,
+        }),
+        submissionColumnHelper.display({
+            id: 'actions',
+            header: () => <span className="block text-right">Aksi</span>,
+            cell: ({ row }) => (
+                <div className="flex justify-end">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!row.original.can_download}
+                        onClick={() => openExportForSubmission(row.original)}
+                        className="border-[#cfe2d5] text-xs text-[#236d49]"
+                    >
+                        <Download className="size-3.5" /> Download
+                    </Button>
+                </div>
+            ),
+        }),
+    ]);
+    const submissionTable = useTable({
+        features: submissionsTableFeatures,
+        data: timesheetSubmissions.data,
+        columns: submissionTableColumns,
+    });
+
+    function openExportForSubmission(submission: TimesheetSubmission): void {
+        setSelectedSubmissionForExport(submission);
+        setDepartment(submission.department);
+        setClient(submission.client ?? 'SIM');
+        setApprovedBy(submission.approved_by);
+        setApprovedRole(submission.approved_role ?? 'Atasan');
+        setPeriod(`${submission.period}-01`);
+        setIsExportOpen(true);
+    }
 
     function orderedTaskIds(items: Task[]): Record<Task['status'], number[]> {
         return columns.reduce(
@@ -676,6 +790,23 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             query: {
                 period: nextPeriod,
                 user_id: userFilter === 'all' ? undefined : userFilter,
+                submission_search: view === 'submissions' ? submissionSearch || undefined : undefined,
+                submission_status: view === 'submissions' && submissionStatusFilter !== 'all' ? submissionStatusFilter : undefined,
+            },
+        }), {
+            preserveScroll: true,
+            preserveState: true,
+        });
+    }
+
+    function visitSubmissionPage(page: number): void {
+        router.visit(tasksIndex.url({
+            query: {
+                period: taskPeriod,
+                user_id: userFilter === 'all' ? undefined : userFilter,
+                submission_search: submissionSearch || undefined,
+                submission_status: submissionStatusFilter === 'all' ? undefined : submissionStatusFilter,
+                submission_page: page === 1 ? undefined : page,
             },
         }), {
             preserveScroll: true,
@@ -689,21 +820,20 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         setIsCreateOpen(true);
     }
 
-    function submitForReview(task: Task): void {
-        router.post(submitTaskReview(task.id).url, {}, {
-            preserveScroll: true,
-            onError: () => toast.error('Task gagal diajukan untuk review.'),
-        });
+    function openOsticketPeriodDialog(): void {
+        setOsticketPeriod(`${taskPeriod}-01`);
+        setIsOsticketPeriodOpen(true);
     }
 
-    async function openOsticketDialog(): Promise<void> {
+    async function openOsticketDialog(selectedPeriod = osticketPeriod.slice(0, 7)): Promise<void> {
+        setIsOsticketPeriodOpen(false);
         setIsOsticketOpen(true);
         setIsOsticketLoading(true);
         setOsticketPreview(null);
         setSelectedOsticketIds([]);
 
         try {
-            const response = await fetch(osticketRoutes.preview.url({ query: { period: taskPeriod } }), {
+            const response = await fetch(osticketRoutes.preview.url({ query: { period: selectedPeriod } }), {
                 headers: { Accept: 'application/json' },
             });
 
@@ -728,6 +858,13 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         );
     }
 
+    function toggleAllOsticketTickets(): void {
+        const ticketIds = osticketPreview?.tickets.map((ticket) => ticket.ticket_id) ?? [];
+        const allSelected = ticketIds.length > 0 && ticketIds.every((id) => selectedOsticketIds.includes(id));
+
+        setSelectedOsticketIds(allSelected ? [] : ticketIds);
+    }
+
     function importOsticketTickets(): void {
         if (selectedOsticketIds.length === 0) {
             toast.warning('Pilih minimal satu ticket.');
@@ -736,7 +873,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         }
 
         setIsOsticketImporting(true);
-        router.post(osticketRoutes.import().url, { period: taskPeriod, ticket_ids: selectedOsticketIds }, {
+        router.post(osticketRoutes.import().url, { period: osticketPeriod.slice(0, 7), ticket_ids: selectedOsticketIds }, {
             preserveScroll: true,
             onSuccess: () => {
                 setIsOsticketOpen(false);
@@ -841,8 +978,20 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             return;
         }
 
-        setIsExportOpen(false);
-        setIsPreviewOpen(true);
+        router.post(storeTimesheetSubmission().url, {
+            department,
+            client,
+            approved_by: approvedBy,
+            approved_role: approvedRole,
+            period: period.slice(0, 7),
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setIsExportOpen(false);
+                setIsPreviewOpen(true);
+            },
+            onError: () => toast.error('Pengajuan timesheet gagal disimpan.'),
+        });
     }
 
     function signaturePoint(
@@ -1002,7 +1151,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"
-                                onClick={() => void openOsticketDialog()}
+                                onClick={openOsticketPeriodDialog}
                                 hidden={!canManageTasks}
                                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#c8dced] bg-[#eef6fc] px-4 text-sm font-semibold text-[#3f79ad] shadow-sm transition hover:border-[#9ec4df] hover:bg-[#e2f0fa]"
                             >
@@ -1011,11 +1160,14 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setIsExportOpen(true)}
+                                onClick={() => {
+                                    setSelectedSubmissionForExport(null);
+                                    setIsExportOpen(true);
+                                }}
                                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#cfe2d5] bg-white px-4 text-sm font-semibold text-[#236d49] shadow-sm transition hover:border-[#9fc9ad] hover:bg-[#f5fbf6]"
                             >
                                 <Download className="size-4" />
-                                Export timesheet
+                                Pengajuan timesheet
                             </button>
                             <button
                                 type="button"
@@ -1029,22 +1181,42 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         </div>
                     </header>
 
-                    <section className="min-w-0 space-y-4">
+                    <section className={isTasksFullscreen ? 'fixed inset-0 z-50 min-w-0 space-y-4 overflow-y-auto bg-[#f8faf7] px-4 py-4 sm:px-6 sm:py-6 lg:px-10' : 'min-w-0 space-y-4'}>
                         <div className="flex flex-col gap-3 rounded-2xl border border-[#dfeae3] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex rounded-lg bg-[#f3f8f5] p-1">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex rounded-lg bg-[#f3f8f5] p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setView('board')}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'board' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                    >
+                                        <SquareKanban className="size-4" /> Board
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setView('list')}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'list' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                    >
+                                        <List className="size-4" /> List
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setView('submissions')}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'submissions' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                    >
+                                        <ClipboardList className="size-4" /> Pengajuan
+                                    </button>
+                                </div>
                                 <button
                                     type="button"
-                                    onClick={() => setView('board')}
-                                    className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'board' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                    onClick={() => setIsTasksFullscreen((fullscreen) => !fullscreen)}
+                                    aria-pressed={isTasksFullscreen}
+                                    aria-label={isTasksFullscreen ? 'Keluar dari fullscreen' : 'Buka task fullscreen'}
+                                    title={isTasksFullscreen ? 'Keluar dari fullscreen (Esc)' : 'Buka task fullscreen'}
+                                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#dfeae3] bg-white px-3 text-xs font-semibold text-[#557067] transition hover:border-[#9fc9ad] hover:bg-[#f5fbf6]"
                                 >
-                                    <SquareKanban className="size-4" /> Board
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setView('list')}
-                                    className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'list' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
-                                >
-                                    <List className="size-4" /> List
+                                    {isTasksFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                                    <span className="hidden sm:inline">{isTasksFullscreen ? 'Keluar' : 'Fullscreen'}</span>
                                 </button>
                             </div>
                             <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:justify-end">
@@ -1059,34 +1231,54 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-[#dfeae3] px-3 text-[#9aac9f] sm:max-w-[230px]">
                                     <Search className="size-4 shrink-0" />
                                     <input
-                                        value={query}
-                                        onChange={(event) =>
-                                            setQuery(event.target.value)
-                                        }
-                                        placeholder="Cari task..."
+                                        value={view === 'submissions' ? submissionSearch : query}
+                                        onChange={(event) => {
+                                            if (view === 'submissions') {
+                                                setSubmissionSearch(event.target.value);
+                                            } else {
+                                                setQuery(event.target.value);
+                                            }
+                                        }}
+                                        placeholder={view === 'submissions' ? 'Cari pengajuan...' : 'Cari task...'}
                                         className="min-w-0 flex-1 bg-transparent text-xs text-[#173d30] outline-none placeholder:text-[#9aac9f]"
                                     />
                                 </label>
-                                <label className="flex h-9 items-center gap-2 rounded-lg border border-[#dfeae3] px-3 text-[#71877b]">
-                                    <SlidersHorizontal className="size-3.5" />
-                                    <select
-                                        value={priorityFilter}
-                                        onChange={(event) =>
-                                            setPriorityFilter(
-                                                event.target.value,
-                                            )
-                                        }
-                                        className="bg-transparent text-xs outline-none"
-                                    >
-                                        <option value="all">
-                                            Semua prioritas
-                                        </option>
-                                        <option value="low">Rendah</option>
-                                        <option value="medium">Sedang</option>
-                                        <option value="high">Tinggi</option>
-                                    </select>
-                                </label>
-                                {auth.user.role === 'admin' && (
+                                {view === 'submissions' ? (
+                                    <label className="flex h-9 items-center gap-2 rounded-lg border border-[#dfeae3] px-3 text-[#71877b]">
+                                        <SlidersHorizontal className="size-3.5" />
+                                        <select
+                                            value={submissionStatusFilter}
+                                            onChange={(event) => {
+                                                setSubmissionStatusFilter(event.target.value);
+                                            }}
+                                            className="bg-transparent text-xs outline-none"
+                                        >
+                                            <option value="all">Semua status</option>
+                                            <option value="pending">Menunggu approval</option>
+                                            <option value="approved">Approved</option>
+                                            <option value="rejected">Rejected</option>
+                                        </select>
+                                    </label>
+                                ) : (
+                                    <label className="flex h-9 items-center gap-2 rounded-lg border border-[#dfeae3] px-3 text-[#71877b]">
+                                        <SlidersHorizontal className="size-3.5" />
+                                        <select
+                                            value={priorityFilter}
+                                            onChange={(event) =>
+                                                setPriorityFilter(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="bg-transparent text-xs outline-none"
+                                        >
+                                            <option value="all">Semua prioritas</option>
+                                            <option value="low">Rendah</option>
+                                            <option value="medium">Sedang</option>
+                                            <option value="high">Tinggi</option>
+                                        </select>
+                                    </label>
+                                )}
+                                {auth.user.role === 'admin' && view !== 'submissions' && (
                                     <label className="flex h-9 items-center gap-2 rounded-lg border border-[#dfeae3] px-3 text-[#71877b]">
                                         <select value={userFilter} onChange={(event) => changeUserFilter(event.target.value)} className="bg-transparent text-xs outline-none">
                                             <option value="all">Semua pengguna</option>
@@ -1097,7 +1289,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </div>
                         </div>
 
-                        {filteredTasks.length > 0 && (
+                        {view !== 'submissions' && filteredTasks.length > 0 && (
                             <div hidden={!canManageTasks} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dfeae3] bg-white px-4 py-3">
                                 <button
                                     type="button"
@@ -1140,8 +1332,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 <p className="text-xs text-[#71877b]">
                                     Tarik task ke kolom lain untuk mengubah status.
                                 </p>
-                                <div className="grid min-w-[920px] grid-cols-4 gap-3 overflow-x-auto pb-2">
-                                {columns.map((column) => {
+                                <div className="overflow-x-auto pb-2">
+                                    <div className="grid min-w-[920px] grid-cols-4 gap-3">
+                                    {columns.map((column) => {
                                     const columnTasks = filteredTasks.filter(
                                         (task) => task.status === column.key,
                                     );
@@ -1154,9 +1347,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                 setDragOverColumn(column.key);
                                             }}
                                             onDrop={() => handleDrop(column.key)}
-                                            className={`min-h-[520px] rounded-2xl p-3 transition ${column.tone} ${dragOverColumn === column.key ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
+                                            className={`flex ${isTasksFullscreen ? 'h-[calc(100svh-235px)]' : 'h-[clamp(360px,calc(100vh-390px),720px)]'} min-h-0 flex-col overflow-hidden rounded-2xl p-3 transition ${column.tone} ${dragOverColumn === column.key ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
                                         >
-                                            <div className="mb-3 flex items-center justify-between px-1">
+                                            <div className="mb-3 flex shrink-0 items-center justify-between px-1">
                                                 <div className="flex items-center gap-2">
                                                     <span
                                                         className={`size-2.5 rounded-full ${column.dot}`}
@@ -1176,7 +1369,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                     <MoreHorizontal className="size-4" />
                                                 </button>
                                             </div>
-                                            <div className="grid gap-3">
+                                            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
                                                 {columnTasks.map((task) => (
                                                     <TaskCard
                                                         key={task.id}
@@ -1212,7 +1405,6 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                         onEdit={openEditDialog}
                                                         onDelete={setDeletingTask}
                                                         canEdit={task.can_edit}
-                                                        onSubmitReview={submitForReview}
                                                     />
                                                 ))}
                                                 {columnTasks.length === 0 && (
@@ -1226,10 +1418,11 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                             </div>
                                         </div>
                                     );
-                                })}
+                                    })}
+                                    </div>
                                 </div>
                             </div>
-                        ) : (
+                        ) : view === 'list' ? (
                             <div className="overflow-x-auto rounded-2xl border border-[#dfeae3] bg-white">
                                 <Table className="min-w-[1120px] text-left">
                                     <TableHeader className="bg-[#f8faf7] text-[11px] text-[#71877b]">
@@ -1247,7 +1440,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                         {taskTable.getRowModel().rows.length > 0 ? taskTable.getRowModel().rows.map((row) => (
                                             <TableRow key={row.id} className="hover:bg-[#fbfdfb]">
                                                 {row.getAllCells().map((cell) => (
-                                                    <TableCell key={cell.id} className={cell.column.id === 'select' ? 'px-5' : cell.column.id === 'review' ? 'min-w-[220px]' : cell.column.id === 'actions' ? 'pr-5' : undefined}>
+                                                    <TableCell key={cell.id} className={cell.column.id === 'select' ? 'px-5' : cell.column.id === 'actions' ? 'pr-5' : undefined}>
                                                         {taskTable.FlexRender({ cell })}
                                                     </TableCell>
                                                 ))}
@@ -1270,10 +1463,128 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     </div>
                                 )}
                             </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="rounded-2xl border border-[#dfeae3] bg-white p-5">
+                                    <p className="text-xs font-semibold tracking-[0.08em] text-[#5c9072] uppercase">
+                                        Histori pengajuan timesheet
+                                    </p>
+                                    <h2 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#173d30]">
+                                        Data pengajuan tersimpan
+                                    </h2>
+                                    <p className="mt-2 text-sm leading-6 text-[#71877b]">
+                                        Cari, filter status, lalu download pengajuan yang sudah approved.
+                                    </p>
+                                </div>
+                                <div className="overflow-x-auto rounded-2xl border border-[#dfeae3] bg-white">
+                                    <Table className="min-w-[980px] text-left">
+                                        <TableHeader className="bg-[#f8faf7] text-[11px] text-[#71877b]">
+                                            {submissionTable.getHeaderGroups().map((headerGroup) => (
+                                                <TableRow key={headerGroup.id}>
+                                                    {headerGroup.headers.map((header) => (
+                                                        <TableHead key={header.id} className={header.id === 'actions' ? 'pr-5 text-right' : undefined}>
+                                                            {header.isPlaceholder ? null : submissionTable.FlexRender({ header })}
+                                                        </TableHead>
+                                                    ))}
+                                                </TableRow>
+                                            ))}
+                                        </TableHeader>
+                                        <TableBody>
+                                            {submissionTable.getRowModel().rows.length > 0 ? submissionTable.getRowModel().rows.map((row) => (
+                                                <TableRow key={row.id} className="hover:bg-[#fbfdfb]">
+                                                    {row.getAllCells().map((cell) => (
+                                                        <TableCell key={cell.id} className={cell.column.id === 'actions' ? 'pr-5' : undefined}>
+                                                            {submissionTable.FlexRender({ cell })}
+                                                        </TableCell>
+                                                    ))}
+                                                </TableRow>
+                                            )) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={submissionTableColumns.length} className="h-32 text-center text-sm text-[#71877b]">
+                                                        Belum ada pengajuan tersimpan.
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eaf1ec] px-5 py-3">
+                                        <p className="text-xs text-[#8aa097]">
+                                            {timesheetSubmissions.total > 0
+                                                ? `Menampilkan ${timesheetSubmissions.from}–${timesheetSubmissions.to} dari ${timesheetSubmissions.total} pengajuan`
+                                                : '0 pengajuan'}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={timesheetSubmissions.current_page <= 1}
+                                                onClick={() => visitSubmissionPage(timesheetSubmissions.current_page - 1)}
+                                                className="h-8 rounded-lg border-[#dfeae3] px-3 text-xs text-[#557067]"
+                                            >
+                                                Sebelumnya
+                                            </Button>
+                                            <span className="text-xs text-[#71877b]">
+                                                Halaman {timesheetSubmissions.current_page} dari {timesheetSubmissions.last_page}
+                                            </span>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={timesheetSubmissions.current_page >= timesheetSubmissions.last_page}
+                                                onClick={() => visitSubmissionPage(timesheetSubmissions.current_page + 1)}
+                                                className="h-8 rounded-lg border-[#dfeae3] px-3 text-xs text-[#557067]"
+                                            >
+                                                Berikutnya
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </section>
                 </div>
             </main>
+            <Dialog open={isOsticketPeriodOpen} onOpenChange={setIsOsticketPeriodOpen}>
+                <DialogContent className="border-[#dfeae3] bg-white sm:max-w-[520px]">
+                    <DialogHeader className="border-b border-[#eaf1ec] pb-4">
+                        <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
+                            Pilih periode osTicket
+                        </DialogTitle>
+                        <DialogDescription className="leading-6 text-[#71877b]">
+                            Pilih bulan dan tahun. Data ticket hanya akan diambil dari periode ini.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-2 py-2">
+                        <Label htmlFor="osticket-period" className="text-sm font-semibold text-[#315847]">
+                            Periode
+                        </Label>
+                        <DatePicker
+                            value={osticketPeriod}
+                            onChange={setOsticketPeriod}
+                            placeholder="Pilih bulan"
+                            monthOnly
+                        />
+                    </div>
+                    <DialogFooter className="border-t border-[#eaf1ec] pt-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsOsticketPeriodOpen(false)}
+                            className="h-11 rounded-xl border-[#dfeae3] px-5 text-[#557067]"
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => void openOsticketDialog()}
+                            disabled={!osticketPeriod}
+                            className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"
+                        >
+                            <Ticket className="size-4" />
+                            Ambil {osticketPeriod ? formatMonth(osticketPeriod.slice(0, 7)) : 'data'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <Dialog
                 open={isOsticketOpen}
                 onOpenChange={(open) => {
@@ -1288,7 +1599,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             Ambil data dari osTicket
                         </DialogTitle>
                         <DialogDescription className="leading-6 text-[#71877b]">
-                            Ticket yang ditugaskan ke nama akunmu pada periode {formatMonth(taskPeriod)} akan dicocokkan otomatis.
+                            Ticket yang ditugaskan ke nama akunmu pada periode {formatMonth(osticketPeriod.slice(0, 7))} akan dicocokkan otomatis.
                         </DialogDescription>
                     </DialogHeader>
                     {isOsticketLoading ? (
@@ -1324,11 +1635,25 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 <div className="flex items-center justify-between gap-3 border-b border-[#eaf1ec] bg-[#f8faf7] px-4 py-3">
                                     <div>
                                         <h3 className="text-sm font-semibold text-[#173d30]">Ticket ditemukan</h3>
-                                        <p className="mt-1 text-xs text-[#71877b]">Periode {formatMonth(taskPeriod)} · pilih ticket yang ingin dibuat menjadi task.</p>
+                                        <p className="mt-1 text-xs text-[#71877b]">Periode {formatMonth(osticketPeriod.slice(0, 7))} · pilih ticket yang ingin dibuat menjadi task.</p>
                                     </div>
-                                    <span className="rounded-full bg-[#eaf6ee] px-2.5 py-1 text-xs font-semibold text-[#236d49]">
-                                        {osticketPreview.tickets.length} ticket
-                                    </span>
+                                    <div className="flex shrink-0 items-center gap-3">
+                                        <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[#557067]">
+                                            <input
+                                                ref={selectAllOsticketRef}
+                                                type="checkbox"
+                                                checked={osticketPreview.tickets.length > 0 && selectedOsticketIds.length === osticketPreview.tickets.length}
+                                                onChange={toggleAllOsticketTickets}
+                                                disabled={osticketPreview.tickets.length === 0}
+                                                aria-label="Pilih semua ticket"
+                                                className="size-4 accent-[#2d875c]"
+                                            />
+                                            Pilih semua
+                                        </label>
+                                        <span className="rounded-full bg-[#eaf6ee] px-2.5 py-1 text-xs font-semibold text-[#236d49]">
+                                            {osticketPreview.tickets.length} ticket
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="max-h-[360px] overflow-y-auto">
                                     {osticketPreview.tickets.length > 0 ? (
@@ -1600,11 +1925,10 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 <DialogContent className="max-h-[90vh] overflow-y-auto border-[#dfeae3] bg-white sm:max-w-[720px]">
                     <DialogHeader className="border-b border-[#eaf1ec] pb-4">
                         <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
-                            Export timesheet
+                            Pengajuan timesheet
                         </DialogTitle>
                         <DialogDescription className="leading-6 text-[#71877b]">
-                            Data task dengan tanggal pada periode terpilih akan
-                            dimasukkan ke template Excel.
+                            Siapkan data task pada periode terpilih untuk pengajuan timesheet.
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submitExport} className="grid gap-5">
@@ -1731,7 +2055,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 <DialogContent className="max-h-[92vh] overflow-y-auto border-[#dfeae3] bg-white sm:max-w-[1040px]">
                     <DialogHeader className="border-b border-[#eaf1ec] pb-4">
                         <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
-                            Preview timesheet
+                            Preview pengajuan timesheet
                         </DialogTitle>
                         <DialogDescription className="leading-6 text-[#71877b]">
                             Periksa data sebelum download. Tanda tangan atasan diambil dari approval task.

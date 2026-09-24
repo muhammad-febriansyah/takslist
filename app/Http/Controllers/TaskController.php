@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
 use App\Models\Task;
+use App\Models\TimesheetSubmission;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,6 +24,8 @@ class TaskController extends Controller
         $user->loadMissing('supervisor:id,name,role,position');
         $search = trim($request->string('search')->toString());
         $userId = $request->integer('user_id') ?: null;
+        $submissionSearch = trim($request->string('submission_search')->toString());
+        $submissionStatus = $request->string('submission_status')->toString();
         $period = $request->string('period')->toString();
 
         if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
@@ -100,11 +103,52 @@ class TaskController extends Controller
             ])
             ->values();
 
+        $submissions = TimesheetSubmission::query()
+            ->whereBelongsTo($user)
+            ->when($submissionSearch !== '', function (Builder $query) use ($submissionSearch): void {
+                $query->where(function (Builder $searchQuery) use ($submissionSearch): void {
+                    $searchQuery
+                        ->where('period', 'like', "%{$submissionSearch}%")
+                        ->orWhere('department', 'like', "%{$submissionSearch}%")
+                        ->orWhere('client', 'like', "%{$submissionSearch}%")
+                        ->orWhere('approved_by', 'like', "%{$submissionSearch}%");
+                });
+            })
+            ->when(in_array($submissionStatus, ['pending', 'approved', 'rejected'], true), fn (Builder $query): Builder => $query->where('status', $submissionStatus))
+            ->orderByDesc('period')
+            ->orderByDesc('id')
+            ->paginate(10, [
+                'id',
+                'period',
+                'status',
+                'department',
+                'client',
+                'approved_by',
+                'approved_role',
+                'submitted_at',
+            ], 'submission_page')
+            ->withQueryString();
+
+        $submissions->setCollection($submissions->getCollection()->map(fn (TimesheetSubmission $submission): array => [
+            'id' => $submission->id,
+            'period' => $submission->period,
+            'status' => $submission->status,
+            'department' => $submission->department,
+            'client' => $submission->client,
+            'approved_by' => $submission->approved_by,
+            'approved_role' => $submission->approved_role,
+            'submitted_at' => $submission->submitted_at?->toIso8601String(),
+            'can_download' => $submission->status === 'approved',
+        ]));
+
         return Inertia::render('tasks/index', [
             'tasks' => $tasks,
             'search' => $search,
             'user_id' => $userId,
             'period' => $period,
+            'submission_search' => $submissionSearch,
+            'submission_status' => $submissionStatus,
+            'timesheet_submissions' => $submissions,
             'export_approver' => $user->isBawahan()
                 ? $user->supervisor?->only(['id', 'name', 'role', 'position'])
                 : null,

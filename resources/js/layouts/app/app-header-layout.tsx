@@ -1,4 +1,5 @@
 import { AppContent } from '@/components/app-content';
+import { AppFooter } from '@/components/app-footer';
 import { AppHeader } from '@/components/app-header';
 import { AppShell } from '@/components/app-shell';
 import SiteMeta from '@/components/site-meta';
@@ -13,6 +14,7 @@ export default function AppHeaderLayout({
             <SiteMeta />
             <AppHeader breadcrumbs={breadcrumbs} />
             <AppContent variant="header">{children}</AppContent>
+            <AppFooter />
         </AppShell>
     );
 }

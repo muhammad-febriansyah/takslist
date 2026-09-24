@@ -26,6 +26,43 @@ it('allows a subordinate to submit a task to their supervisor', function () {
     expect(DatabaseNotification::query()->where('notifiable_id', $supervisor->id)->count())->toBe(1);
 });
 
+it('submits eligible completed tasks for a selected period', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $subordinate = User::factory()->state([
+        'role' => 'bawahan',
+        'supervisor_id' => $supervisor->id,
+    ])->create();
+    $eligibleTask = Task::factory()->for($subordinate)->done()->create(['due_date' => '2026-09-10']);
+    $otherPeriodTask = Task::factory()->for($subordinate)->done()->create(['due_date' => '2026-08-10']);
+    $pendingTask = Task::factory()->for($subordinate)->done()->create(['due_date' => '2026-09-11']);
+    $approvedTask = Task::factory()->for($subordinate)->done()->create(['due_date' => '2026-09-12']);
+    TaskReview::factory()->create([
+        'task_id' => $pendingTask->id,
+        'submitted_by' => $subordinate->id,
+        'reviewer_id' => $supervisor->id,
+        'status' => 'pending',
+    ]);
+    TaskReview::factory()->create([
+        'task_id' => $approvedTask->id,
+        'submitted_by' => $subordinate->id,
+        'reviewer_id' => $supervisor->id,
+        'status' => 'approved',
+    ]);
+
+    $this->actingAs($subordinate)
+        ->post(route('reviews.submit-period'), ['period' => '2026-09'])
+        ->assertRedirect();
+
+    expect($eligibleTask->refresh()->status)->toBe('review')
+        ->and(TaskReview::query()->where('task_id', $eligibleTask->id)->first())
+        ->reviewer_id->toBe($supervisor->id)
+        ->status->toBe('pending')
+        ->and($otherPeriodTask->refresh()->status)->toBe('done')
+        ->and($pendingTask->refresh()->status)->toBe('done')
+        ->and($approvedTask->refresh()->status)->toBe('done')
+        ->and(DatabaseNotification::query()->where('notifiable_id', $supervisor->id)->count())->toBe(1);
+});
+
 it('requires a completed task before review submission', function () {
     $supervisor = User::factory()->state(['role' => 'atasan'])->create();
     $subordinate = User::factory()->state([

@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 #[Fillable(['site_name', 'keyword', 'tagline', 'logo_path', 'favicon_path', 'updated_by'])]
 class SiteSetting extends Model
@@ -38,13 +37,20 @@ class SiteSetting extends Model
     {
         $faviconPath = $this->favicon_path ?: $this->logo_path;
         $version = $this->updated_at?->timestamp;
+        $publicAssetUrl = static function (?string $path) use ($version): ?string {
+            if ($path === null) {
+                return null;
+            }
+
+            return '/storage/'.ltrim($path, '/').($version ? '?v='.$version : '');
+        };
 
         return [
             'site_name' => $this->site_name,
             'keyword' => $this->keyword,
             'tagline' => $this->tagline,
-            'logo_url' => $this->logo_path ? Storage::disk('public')->url($this->logo_path).($version ? '?v='.$version : '') : null,
-            'favicon_url' => $faviconPath ? Storage::disk('public')->url($faviconPath).($version ? '?v='.$version : '') : null,
+            'logo_url' => $publicAssetUrl($this->logo_path),
+            'favicon_url' => $publicAssetUrl($faviconPath),
         ];
     }
 }

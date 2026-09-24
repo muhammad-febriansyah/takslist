@@ -33,7 +33,7 @@ class OsticketTaskController extends Controller
             report($exception);
 
             return response()->json([
-                'message' => 'Koneksi osTicket gagal. Periksa konfigurasi database osTicket.',
+                'message' => 'Koneksi API osTicket gagal. Periksa URL dan API key osTicket.',
             ], 503);
         }
     }
@@ -54,7 +54,7 @@ class OsticketTaskController extends Controller
             report($exception);
 
             throw ValidationException::withMessages([
-                'ticket_ids' => 'Data osTicket tidak dapat dibaca. Periksa koneksi database.',
+                'ticket_ids' => 'Data osTicket tidak dapat dibaca. Periksa URL dan API key.',
             ]);
         }
 

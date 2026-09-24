@@ -12,6 +12,7 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskReorderController;
 use App\Http\Controllers\TaskReviewController;
 use App\Http\Controllers\TimesheetExportController;
+use App\Http\Controllers\TimesheetSubmissionController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -25,6 +26,7 @@ Route::middleware(['auth'])->group(function () {
     Route::put('admin/users/{user}', [UserController::class, 'update'])->name('admin.users.update');
     Route::delete('admin/users/{user}', [UserController::class, 'destroy'])->name('admin.users.destroy');
     Route::get('reviews', [TaskReviewController::class, 'index'])->name('reviews.index');
+    Route::post('reviews/submit-period', [TaskReviewController::class, 'storeForPeriod'])->name('reviews.submit-period');
     Route::post('reviews/bulk-approve', [TaskReviewController::class, 'bulkApprove'])->name('reviews.bulk-approve');
     Route::get('reviews/{review}/signature', [TaskReviewController::class, 'signature'])->name('reviews.signature');
 
@@ -36,6 +38,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('tasks/{task}/review', [TaskReviewController::class, 'store'])->name('tasks.review.store');
     Route::patch('reviews/{review}', [TaskReviewController::class, 'update'])->name('reviews.update');
     Route::post('tasks/export/timesheet', TimesheetExportController::class)->name('tasks.export.timesheet');
+    Route::post('tasks/timesheet-submissions', [TimesheetSubmissionController::class, 'store'])->name('tasks.timesheet-submissions.store');
     Route::patch('notifications/{notification}/read', NotificationController::class)->name('notifications.read');
 
     Route::get('calendar', [CalendarController::class, 'index'])->name('calendar.index');

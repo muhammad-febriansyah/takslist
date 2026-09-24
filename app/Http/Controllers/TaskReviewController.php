@@ -4,10 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\BulkApproveReviewsRequest;
 use App\Http\Requests\ReviewTaskRequest;
+use App\Http\Requests\SubmitPeriodReviewRequest;
 use App\Http\Requests\SubmitTaskReviewRequest;
 use App\Models\Task;
 use App\Models\TaskReview;
 use App\Notifications\TaskFlowNotification;
+use App\TimesheetExportService;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +84,58 @@ class TaskReviewController extends Controller
         return back();
     }
 
+    public function storeForPeriod(SubmitPeriodReviewRequest $request): RedirectResponse
+    {
+        $user = $request->user();
+        $period = $request->validated('period');
+        $periodStart = CarbonImmutable::createFromFormat('!Y-m', $period)->startOfMonth();
+        $periodEnd = $periodStart->endOfMonth();
+
+        $tasks = DB::transaction(function () use ($user, $periodStart, $periodEnd): Collection {
+            $tasks = Task::query()
+                ->ownedBy($user)
+                ->where('status', 'done')
+                ->whereBetween('due_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->whereDoesntHave('reviews', fn ($query) => $query->whereIn('status', ['pending', 'approved']))
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($tasks as $task) {
+                $task->reviews()->create([
+                    'submitted_by' => $user->id,
+                    'reviewer_id' => $user->supervisor_id,
+                    'status' => 'pending',
+                ]);
+                $task->update(['status' => 'review']);
+            }
+
+            return $tasks;
+        });
+
+        if ($tasks->isEmpty()) {
+            Inertia::flash('toast', [
+                'type' => 'warning',
+                'message' => 'Tidak ada task selesai yang bisa diajukan pada periode ini.',
+            ]);
+
+            return back();
+        }
+
+        $user->supervisor?->notify(new TaskFlowNotification(
+            'info',
+            'Pengajuan review periode baru',
+            $user->name.' mengajukan '.$tasks->count().' task untuk periode '.$period.'.',
+            route('reviews.index'),
+        ));
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $tasks->count().' task periode '.$period.' berhasil diajukan untuk review.',
+        ]);
+
+        return back();
+    }
+
     public function signature(TaskReview $review): StreamedResponse
     {
         Gate::authorize('view', $review);
@@ -94,8 +150,11 @@ class TaskReviewController extends Controller
         );
     }
 
-    public function update(ReviewTaskRequest $request, TaskReview $review): RedirectResponse
-    {
+    public function update(
+        ReviewTaskRequest $request,
+        TaskReview $review,
+        TimesheetExportService $timesheetService,
+    ): RedirectResponse {
         Gate::authorize('update', $review);
         $validated = $request->validated();
         $signaturePath = null;
@@ -127,7 +186,8 @@ class TaskReviewController extends Controller
             ]);
         });
 
-        $review->loadMissing(['submitter:id,name', 'task:id,title']);
+        $review->loadMissing(['submitter:id,name', 'task:id,title,due_date,user_id']);
+        $timesheetService->syncSubmissionForTask($review->task);
         $isApproved = $validated['decision'] === 'approved';
         $review->submitter?->notify(new TaskFlowNotification(
             $isApproved ? 'success' : 'warning',
@@ -146,15 +206,17 @@ class TaskReviewController extends Controller
         return back();
     }
 
-    public function bulkApprove(BulkApproveReviewsRequest $request): RedirectResponse
-    {
+    public function bulkApprove(
+        BulkApproveReviewsRequest $request,
+        TimesheetExportService $timesheetService,
+    ): RedirectResponse {
         Gate::authorize('viewAny', TaskReview::class);
         $validated = $request->validated();
         $reviews = TaskReview::query()
             ->whereIn('id', $validated['review_ids'])
             ->where('reviewer_id', $request->user()->id)
             ->where('status', 'pending')
-            ->with(['task:id,title,user_id', 'task.user:id,name'])
+            ->with(['task:id,title,user_id,due_date', 'task.user:id,name'])
             ->get();
 
         if ($reviews->count() !== count($validated['review_ids'])) {
@@ -180,6 +242,7 @@ class TaskReviewController extends Controller
         });
 
         foreach ($reviews as $review) {
+            $timesheetService->syncSubmissionForTask($review->task);
             $review->task?->user?->notify(new TaskFlowNotification(
                 'success',
                 'Task disetujui',

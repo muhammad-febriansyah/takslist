@@ -4,6 +4,7 @@ namespace App;
 
 use App\Models\Task;
 use App\Models\TaskReview;
+use App\Models\TimesheetSubmission;
 use App\Models\User;
 use DateTimeImmutable;
 use DOMDocument;
@@ -164,23 +165,29 @@ class TimesheetExportService
 
     public function canExportForPeriod(User $user, string $period): bool
     {
-        $periodDate = DateTimeImmutable::createFromFormat('!Y-m', $period);
+        return $this->submissionStatus($user, $period) === 'approved';
+    }
 
-        if ($periodDate === false) {
-            return false;
+    public function syncSubmissionStatus(TimesheetSubmission $submission): void
+    {
+        $submission->loadMissing('user');
+        $submission->update(['status' => $this->submissionStatus($submission->user, $submission->period)]);
+    }
+
+    public function syncSubmissionForTask(Task $task): void
+    {
+        if ($task->due_date === null) {
+            return;
         }
 
-        $firstDay = $periodDate->modify('first day of this month');
-        $lastDay = $periodDate->modify('last day of this month');
-        $tasks = Task::ownedBy($user)
-            ->whereBetween('due_date', [$firstDay->format('Y-m-d'), $lastDay->format('Y-m-d')])
-            ->with('latestReview')
-            ->get(['id']);
+        $submission = TimesheetSubmission::query()
+            ->where('user_id', $task->user_id)
+            ->where('period', $task->due_date->format('Y-m'))
+            ->first();
 
-        return $tasks->isNotEmpty()
-            && $tasks->every(fn (Task $task): bool => $task->latestReview?->status === 'approved'
-                && $task->latestReview->signature_path !== null
-                && Storage::disk('public')->exists($task->latestReview->signature_path));
+        if ($submission !== null) {
+            $this->syncSubmissionStatus($submission);
+        }
     }
 
     public function signatureDataForPeriod(User $user, string $period): ?string
@@ -207,6 +214,34 @@ class TimesheetExportService
         }
 
         return 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($review->signature_path));
+    }
+
+    private function submissionStatus(User $user, string $period): string
+    {
+        $periodDate = DateTimeImmutable::createFromFormat('!Y-m', $period);
+
+        if ($periodDate === false) {
+            return 'pending';
+        }
+
+        $firstDay = $periodDate->modify('first day of this month');
+        $lastDay = $periodDate->modify('last day of this month');
+        $tasks = Task::ownedBy($user)
+            ->whereBetween('due_date', [$firstDay->format('Y-m-d'), $lastDay->format('Y-m-d')])
+            ->with('latestReview')
+            ->get(['id']);
+
+        if ($tasks->contains(fn (Task $task): bool => $task->latestReview?->status === 'rejected')) {
+            return 'rejected';
+        }
+
+        if ($tasks->isNotEmpty() && $tasks->every(fn (Task $task): bool => $task->latestReview?->status === 'approved'
+            && $task->latestReview->signature_path !== null
+            && Storage::disk('public')->exists($task->latestReview->signature_path))) {
+            return 'approved';
+        }
+
+        return 'pending';
     }
 
     private function formatIndonesianDate(DateTimeImmutable $date): string

@@ -92,6 +92,12 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(Task::class);
     }
 
+    /** @return HasMany<TimesheetSubmission, $this> */
+    public function timesheetSubmissions(): HasMany
+    {
+        return $this->hasMany(TimesheetSubmission::class);
+    }
+
     /** @return HasMany<TaskReview, $this> */
     public function submittedReviews(): HasMany
     {

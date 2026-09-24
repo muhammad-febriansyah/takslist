@@ -27,6 +27,18 @@ it('allows admin to update website identity and upload a png logo', function () 
     Storage::disk('public')->assertExists($settings->logo_path);
 });
 
+it('returns relative URLs for uploaded site assets', function () {
+    $settings = SiteSetting::factory()->create([
+        'logo_path' => 'site/logo.png',
+        'favicon_path' => 'site/favicon.png',
+    ]);
+
+    $publicSettings = $settings->toPublicArray();
+
+    expect($publicSettings['logo_url'])->toStartWith('/storage/site/logo.png?v=')
+        ->and($publicSettings['favicon_url'])->toStartWith('/storage/site/favicon.png?v=');
+});
+
 it('forbids non-admin users from changing website identity', function () {
     $user = User::factory()->create();
 
