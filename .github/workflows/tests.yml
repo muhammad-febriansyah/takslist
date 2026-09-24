@@ -31,8 +31,23 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
       - name: Setup Application
-        run: composer setup
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+          php artisan migrate --force
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Generate Wayfinder types
+        run: php artisan wayfinder:generate --with-form
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Run CI Checks
         run: composer ci:check
