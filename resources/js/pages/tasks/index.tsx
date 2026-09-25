@@ -1319,9 +1319,22 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             }
 
             if (!response.ok) {
-                const payload = await response.json().catch(() => null) as { message?: string } | null;
+                const contentType = response.headers.get('content-type') ?? '';
+                let message: string | undefined;
 
-                throw new Error(payload?.message ?? 'Export gagal.');
+                if (contentType.includes('application/json')) {
+                    const payload = await response.json().catch(() => null) as { message?: string } | null;
+                    message = payload?.message;
+                } else {
+                    const responseText = await response.text();
+                    const htmlMessage = responseText.match(/<(?:h1|title)[^>]*>([\s\S]*?)<\/(?:h1|title)>/i)?.[1];
+                    const plainText = htmlMessage ?? responseText;
+                    const cleanedText = plainText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+                    message = cleanedText || undefined;
+                }
+
+                throw new Error(message ?? `Export gagal (HTTP ${response.status}).`);
             }
 
             const blob = await response.blob();
