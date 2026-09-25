@@ -794,8 +794,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={!row.original.can_download}
-                        onClick={() => openExportForSubmission(row.original)}
+                        disabled={!row.original.can_download || isDownloading}
+                        onClick={() => void downloadExport(undefined, row.original)}
                         className="border-[#cfe2d5] text-xs text-[#236d49]"
                     >
                         <Download className="size-3.5" /> Download
@@ -809,16 +809,6 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         data: timesheetSubmissions.data,
         columns: submissionTableColumns,
     });
-
-    function openExportForSubmission(submission: TimesheetSubmission): void {
-        setSelectedSubmissionForExport(submission);
-        setDepartment(submission.department);
-        setClient(submission.client ?? 'SIM');
-        setApprovedBy(submission.approved_by);
-        setApprovedRole(submission.approved_role ?? 'Atasan');
-        setPeriod(`${submission.period}-01`);
-        setIsExportOpen(true);
-    }
 
     function openNewTimesheetSubmission(): void {
         setSelectedSubmissionForExport(null);
@@ -1269,10 +1259,23 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         setHasSignature(false);
     }
 
-    async function downloadExport(event: FormEvent<HTMLFormElement>): Promise<void> {
-        event.preventDefault();
+    async function downloadExport(
+        event?: FormEvent<HTMLFormElement>,
+        submission?: TimesheetSubmission,
+    ): Promise<void> {
+        event?.preventDefault();
 
-        if (!canDownloadTimesheet) {
+        const exportSubmission = submission ?? selectedSubmissionForExport;
+        const exportDepartment = exportSubmission?.department ?? department;
+        const exportClient = exportSubmission?.client ?? client;
+        const exportApprovedBy = exportSubmission?.approved_by ?? approvedBy;
+        const exportApprovedRole = exportSubmission?.approved_role ?? approvedRole;
+        const exportPeriod = exportSubmission?.period ?? period.slice(0, 7);
+        const canDownload = exportSubmission !== null
+            ? exportSubmission.can_download && exportSubmission.has_signature
+            : canDownloadTimesheet;
+
+        if (!canDownload) {
             toast.warning('Timesheet belum bisa diunduh sebelum semua task disetujui atasan.');
 
             return;
@@ -1285,14 +1288,14 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 .querySelector('meta[name="csrf-token"]')
                 ?.getAttribute('content') ?? '';
             const body = new URLSearchParams({
-                department,
-                client,
-                approved_by: approvedBy,
-                approved_role: approvedRole,
-                period: period.slice(0, 7),
+                department: exportDepartment,
+                client: exportClient,
+                approved_by: exportApprovedBy,
+                approved_role: exportApprovedRole,
+                period: exportPeriod,
             });
 
-            if (signatureData !== '') {
+            if (exportSubmission === null && signatureData !== '') {
                 body.set('signature_data', signatureData);
             }
 
