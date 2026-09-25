@@ -399,6 +399,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isDuplicateSubmissionDialogOpen, setIsDuplicateSubmissionDialogOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [selectedSubmissionForExport, setSelectedSubmissionForExport] = useState<TimesheetSubmission | null>(null);
     const [isNativeTasksFullscreen, setIsNativeTasksFullscreen] = useState(false);
@@ -817,6 +818,20 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         setApprovedRole(submission.approved_role ?? 'Atasan');
         setPeriod(`${submission.period}-01`);
         setIsExportOpen(true);
+    }
+
+    function openNewTimesheetSubmission(): void {
+        setSelectedSubmissionForExport(null);
+        setPeriod(`${taskPeriod}-01`);
+        setIsExportOpen(true);
+        setIsDuplicateSubmissionDialogOpen(submittedPeriods.includes(taskPeriod));
+    }
+
+    function changeSubmissionPeriod(value: string): void {
+        const nextPeriod = value.slice(0, 7);
+
+        setPeriod(value);
+        setIsDuplicateSubmissionDialogOpen(submittedPeriods.includes(nextPeriod));
     }
 
     function orderedTaskIds(items: Task[]): Record<Task['status'], number[]> {
@@ -1357,10 +1372,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </button>
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setSelectedSubmissionForExport(null);
-                                    setIsExportOpen(true);
-                                }}
+                                onClick={openNewTimesheetSubmission}
                                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#cfe2d5] bg-white px-4 text-sm font-semibold text-[#236d49] shadow-sm transition hover:border-[#9fc9ad] hover:bg-[#f5fbf6]"
                             >
                                 <Download className="size-4" />
@@ -2346,7 +2358,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 <Label htmlFor="export-period">Periode</Label>
                                 <DatePicker
                                     value={period}
-                                    onChange={setPeriod}
+                                    onChange={changeSubmissionPeriod}
                                     monthOnly
                                     placeholder="Pilih periode"
                                 />
@@ -2361,12 +2373,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 Data atasan diambil otomatis dari relasi akun. Download timesheet hanya tersedia setelah semua task pada periode ini disetujui atasan.
                             </div>
                         )}
-                        {hasExistingSubmission ? (
-                            <div className="rounded-xl border border-[#cfe2d5] bg-[#f3faf5] px-4 py-4 text-sm leading-6 text-[#236d49]">
-                                <p className="font-semibold">Pengajuan periode {formatMonth(selectedPeriodKey)} sudah tersimpan.</p>
-                                <p className="mt-1 text-[#557067]">Tidak perlu membuat pengajuan kedua. Buka tab Pengajuan untuk melihat status dan download setelah disetujui.</p>
-                            </div>
-                        ) : (
+                        {selectedSubmissionForExport === null && !hasExistingSubmission && (
                             <div className="space-y-3">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -2427,6 +2434,43 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={isDuplicateSubmissionDialogOpen} onOpenChange={setIsDuplicateSubmissionDialogOpen}>
+                <DialogContent className="border-[#dfeae3] bg-white sm:max-w-[520px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
+                            Pengajuan sudah tersimpan
+                        </DialogTitle>
+                        <DialogDescription className="leading-6 text-[#71877b]">
+                            Pengajuan periode {formatMonth(selectedPeriodKey)} sudah tersimpan. Tidak perlu membuat pengajuan kedua.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-xl border border-[#cfe2d5] bg-[#f3faf5] px-4 py-4 text-sm leading-6 text-[#236d49]">
+                        Buka tab Pengajuan untuk melihat status dan download setelah disetujui. Jika ingin mengajukan bulan lain, pilih periode lain pada form.
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsDuplicateSubmissionDialogOpen(false)}
+                            className="h-11 rounded-xl border-[#dfeae3] px-5 text-[#557067]"
+                        >
+                            Pilih periode lain
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                setIsDuplicateSubmissionDialogOpen(false);
+                                setIsExportOpen(false);
+                                setView('submissions');
+                            }}
+                            className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"
+                        >
+                            <ClipboardList className="size-4" />
+                            Buka tab Pengajuan
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
             <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
