@@ -102,6 +102,47 @@ it('exposes review status and supervisor on the task list', function () {
             ->where('export_approver.position', 'Head of IT'));
 });
 
+it('groups supervisor reviews into one submission per subordinate and period', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $subordinate = User::factory()->state([
+        'role' => 'bawahan',
+        'supervisor_id' => $supervisor->id,
+    ])->create();
+    $firstTask = Task::factory()->for($subordinate)->create([
+        'title' => 'Perbaikan gallery',
+        'due_date' => '2026-09-14',
+        'status' => 'review',
+    ]);
+    $secondTask = Task::factory()->for($subordinate)->create([
+        'title' => 'Update laporan',
+        'due_date' => '2026-09-23',
+        'status' => 'review',
+    ]);
+    TaskReview::factory()->create([
+        'task_id' => $firstTask->id,
+        'submitted_by' => $subordinate->id,
+        'reviewer_id' => $supervisor->id,
+        'status' => 'pending',
+    ]);
+    TaskReview::factory()->create([
+        'task_id' => $secondTask->id,
+        'submitted_by' => $subordinate->id,
+        'reviewer_id' => $supervisor->id,
+        'status' => 'pending',
+    ]);
+
+    $this->actingAs($supervisor)
+        ->get(route('reviews.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('reviews/index')
+            ->has('submissions', 1)
+            ->where('submissions.0.period', '2026-09')
+            ->where('submissions.0.owner.id', $subordinate->id)
+            ->where('submissions.0.owner.name', $subordinate->name)
+            ->where('submissions.0.status', 'pending')
+            ->has('submissions.0.tasks', 2));
+});
+
 it('allows assigned supervisor to approve with a signature', function () {
     Storage::fake('public');
     $supervisor = User::factory()->state(['role' => 'atasan'])->create();

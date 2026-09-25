@@ -9,11 +9,11 @@ use App\Http\Requests\SubmitTaskReviewRequest;
 use App\Models\Task;
 use App\Models\TaskReview;
 use App\Notifications\TaskFlowNotification;
+use App\Services\TaskReviewService;
 use App\TimesheetExportService;
-use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -33,26 +33,47 @@ class TaskReviewController extends Controller
             ->where('reviewer_id', $request->user()->id)
             ->with(['task:id,title,status,due_date,user_id', 'task.user:id,name,email'])
             ->latest()
-            ->get()
-            ->map(fn (TaskReview $review): array => [
-                'id' => $review->id,
-                'status' => $review->status,
-                'note' => $review->note,
-                'submitted_at' => $review->created_at?->toIso8601String(),
-                'signature_url' => $review->signature_path
-                    ? route('reviews.signature', $review)
-                    : null,
-                'task' => [
-                    'id' => $review->task->id,
-                    'title' => $review->task->title,
-                    'status' => $review->task->status,
-                    'due_date' => $review->task->due_date?->toDateString(),
-                    'owner' => $review->task->user->only(['id', 'name']),
-                ],
-            ])
+            ->get();
+
+        $submissions = $reviews
+            ->groupBy(fn (TaskReview $review): string => $review->submitted_by.'|'.($review->task->due_date?->format('Y-m') ?? 'without-period'))
+            ->map(function (Collection $submissionReviews): array {
+                /** @var TaskReview $firstReview */
+                $firstReview = $submissionReviews->sortBy('created_at')->first();
+                $period = $firstReview->task->due_date?->format('Y-m');
+                $pendingReviewIds = $submissionReviews
+                    ->where('status', 'pending')
+                    ->pluck('id')
+                    ->values()
+                    ->all();
+
+                return [
+                    'id' => $firstReview->submitted_by.'-'.($period ?? 'without-period'),
+                    'period' => $period,
+                    'status' => $pendingReviewIds !== []
+                        ? 'pending'
+                        : ($submissionReviews->contains('status', 'rejected') ? 'rejected' : 'approved'),
+                    'submitted_at' => $firstReview->created_at?->toIso8601String(),
+                    'review_ids' => $submissionReviews->pluck('id')->values()->all(),
+                    'pending_review_ids' => $pendingReviewIds,
+                    'owner' => $firstReview->task->user->only(['id', 'name']),
+                    'tasks' => $submissionReviews->map(fn (TaskReview $review): array => [
+                        'review_id' => $review->id,
+                        'review_status' => $review->status,
+                        'note' => $review->note,
+                        'signature_url' => $review->signature_path
+                            ? route('reviews.signature', $review)
+                            : null,
+                        'id' => $review->task->id,
+                        'title' => $review->task->title,
+                        'status' => $review->task->status,
+                        'due_date' => $review->task->due_date?->toDateString(),
+                    ])->values()->all(),
+                ];
+            })
             ->values();
 
-        return Inertia::render('reviews/index', ['reviews' => $reviews]);
+        return Inertia::render('reviews/index', ['submissions' => $submissions]);
     }
 
     public function store(SubmitTaskReviewRequest $request, Task $task): RedirectResponse
@@ -84,33 +105,11 @@ class TaskReviewController extends Controller
         return back();
     }
 
-    public function storeForPeriod(SubmitPeriodReviewRequest $request): RedirectResponse
+    public function storeForPeriod(SubmitPeriodReviewRequest $request, TaskReviewService $reviewService): RedirectResponse
     {
         $user = $request->user();
         $period = $request->validated('period');
-        $periodStart = CarbonImmutable::createFromFormat('!Y-m', $period)->startOfMonth();
-        $periodEnd = $periodStart->endOfMonth();
-
-        $tasks = DB::transaction(function () use ($user, $periodStart, $periodEnd): Collection {
-            $tasks = Task::query()
-                ->ownedBy($user)
-                ->where('status', 'done')
-                ->whereBetween('due_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-                ->whereDoesntHave('reviews', fn ($query) => $query->whereIn('status', ['pending', 'approved']))
-                ->lockForUpdate()
-                ->get();
-
-            foreach ($tasks as $task) {
-                $task->reviews()->create([
-                    'submitted_by' => $user->id,
-                    'reviewer_id' => $user->supervisor_id,
-                    'status' => 'pending',
-                ]);
-                $task->update(['status' => 'review']);
-            }
-
-            return $tasks;
-        });
+        $tasks = $reviewService->submitCompletedTasks($user, $period);
 
         if ($tasks->isEmpty()) {
             Inertia::flash('toast', [

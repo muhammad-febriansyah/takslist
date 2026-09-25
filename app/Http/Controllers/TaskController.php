@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateTaskRequest;
 use App\Models\Task;
 use App\Models\TimesheetSubmission;
 use App\Models\User;
+use App\TimesheetExportService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +18,7 @@ use Inertia\Response;
 
 class TaskController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, TimesheetExportService $timesheetService): Response
     {
         /** @var User $user */
         $user = $request->user();
@@ -125,21 +126,29 @@ class TaskController extends Controller
                 'client',
                 'approved_by',
                 'approved_role',
+                'signature_path',
                 'submitted_at',
             ], 'submission_page')
             ->withQueryString();
 
-        $submissions->setCollection($submissions->getCollection()->map(fn (TimesheetSubmission $submission): array => [
-            'id' => $submission->id,
-            'period' => $submission->period,
-            'status' => $submission->status,
-            'department' => $submission->department,
-            'client' => $submission->client,
-            'approved_by' => $submission->approved_by,
-            'approved_role' => $submission->approved_role,
-            'submitted_at' => $submission->submitted_at?->toIso8601String(),
-            'can_download' => $submission->status === 'approved',
-        ]));
+        $submissions->setCollection($submissions->getCollection()->map(function (TimesheetSubmission $submission) use ($timesheetService, $user): array {
+            $status = $user->isBawahan()
+                ? $timesheetService->statusForSubmission($user, $submission->period)
+                : $submission->status;
+
+            return [
+                'id' => $submission->id,
+                'period' => $submission->period,
+                'status' => $status,
+                'department' => $submission->department,
+                'client' => $submission->client,
+                'approved_by' => $submission->approved_by,
+                'approved_role' => $submission->approved_role,
+                'has_signature' => $submission->signature_path !== null,
+                'submitted_at' => $submission->submitted_at?->toIso8601String(),
+                'can_download' => $status === 'approved',
+            ];
+        }));
 
         return Inertia::render('tasks/index', [
             'tasks' => $tasks,

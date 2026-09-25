@@ -13,7 +13,6 @@ import {
     ClipboardList,
     Download,
     Eraser,
-    Eye,
     Flag,
     GripVertical,
     List,
@@ -44,6 +43,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { Auth } from '@/types/auth';
 import {
     index as tasksIndex,
@@ -109,6 +116,7 @@ type TimesheetSubmission = {
     client: string | null;
     approved_by: string;
     approved_role: string | null;
+    has_signature: boolean;
     submitted_at: string | null;
     can_download: boolean;
 };
@@ -140,20 +148,20 @@ type SubmissionsTableFeatures = typeof submissionsTableFeatures;
 const submissionColumnHelper = createColumnHelper<SubmissionsTableFeatures, TimesheetSubmission>();
 
 const columns = [
-    { key: 'todo', label: 'To Do', tone: 'bg-[#f1f5f2]', dot: 'bg-[#8b9b92]' },
+    { key: 'todo', label: 'Belum dikerjakan', tone: 'bg-[#f1f5f2]', dot: 'bg-[#8b9b92]' },
     {
         key: 'in_progress',
-        label: 'In Progress',
+        label: 'Sedang dikerjakan',
         tone: 'bg-[#f1f7fc]',
         dot: 'bg-[#4f7cac]',
     },
     {
         key: 'review',
-        label: 'Review',
+        label: 'Menunggu review',
         tone: 'bg-[#fff8e8]',
         dot: 'bg-[#d8a23c]',
     },
-    { key: 'done', label: 'Done', tone: 'bg-[#eaf6ee]', dot: 'bg-[#2d875c]' },
+    { key: 'done', label: 'Selesai', tone: 'bg-[#eaf6ee]', dot: 'bg-[#2d875c]' },
 ] as const;
 
 const priorityStyles = {
@@ -206,6 +214,19 @@ function formatMonth(period: string): string {
     }).format(new Date(`${period.slice(0, 7)}-01T00:00:00`));
 }
 
+function taskDescriptionPreview(description: string | null): string | null {
+    const value = description?.trim() ?? '';
+
+    if (value === '') {
+        return null;
+    }
+
+    const marker = 'Deskripsi:';
+    const markerIndex = value.indexOf(marker);
+
+    return (markerIndex >= 0 ? value.slice(markerIndex + marker.length) : value).trim() || null;
+}
+
 function TaskCard({
     task,
     isDragging,
@@ -234,6 +255,7 @@ function TaskCard({
     canEdit: boolean;
 }) {
     const priority = priorityStyles[task.priority];
+    const description = taskDescriptionPreview(task.description);
     const progress =
         task.subtasks.total > 0
             ? `${Math.round((task.subtasks.completed / task.subtasks.total) * 100)}%`
@@ -259,7 +281,7 @@ function TaskCard({
             className={`group cursor-grab rounded-xl border border-l-4 p-4 shadow-[0_1px_2px_rgba(23,61,48,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(23,61,48,0.08)] active:cursor-grabbing ${taskStatusStyles[task.status]} ${isDragging ? 'scale-[0.98] opacity-45' : ''} ${isDragOver ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
         >
             <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-2">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
                     <input
                         type="checkbox"
                         checked={isSelected}
@@ -269,9 +291,11 @@ function TaskCard({
                         disabled={!canEdit}
                         className="mt-0.5 size-4 shrink-0 accent-[#2d875c]"
                     />
-                    <h3 className="text-sm leading-5 font-semibold text-[#173d30]">
-                        {task.title}
-                    </h3>
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-sm leading-5 font-semibold text-[#173d30]">
+                            {task.title}
+                        </h3>
+                    </div>
                 </div>
                 <div hidden={!canEdit} className="flex shrink-0 items-center gap-1 opacity-70 transition group-hover:opacity-100">
                     <button
@@ -298,6 +322,13 @@ function TaskCard({
                     </button>
                 </div>
             </div>
+            {description && (
+                <div className="mt-3 rounded-lg border border-[#eef3ef] bg-white/60 px-3 py-2.5">
+                    <p className="whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
+                        {description}
+                    </p>
+                </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-1.5">
                 {task.project && (
                     <span className="rounded-md bg-[#edf8f1] px-2 py-1 text-[11px] font-medium text-[#367554]">
@@ -359,13 +390,19 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [editingTask, setEditingTask] = useState<Task | null>(null);
     const [deletingTask, setDeletingTask] = useState<Task | null>(null);
     const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+    const [statusTasksStatus, setStatusTasksStatus] = useState<Task['status'] | null>(null);
+    const [statusTasksSearch, setStatusTasksSearch] = useState('');
+    const [statusTasksDate, setStatusTasksDate] = useState('');
+    const [statusTasksPage, setStatusTasksPage] = useState(1);
     const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [selectedSubmissionForExport, setSelectedSubmissionForExport] = useState<TimesheetSubmission | null>(null);
-    const [isTasksFullscreen, setIsTasksFullscreen] = useState(false);
+    const [isNativeTasksFullscreen, setIsNativeTasksFullscreen] = useState(false);
+    const [isFallbackTasksFullscreen, setIsFallbackTasksFullscreen] = useState(false);
+    const tasksSectionRef = useRef<HTMLElement>(null);
     const [isOsticketPeriodOpen, setIsOsticketPeriodOpen] = useState(false);
     const [isOsticketOpen, setIsOsticketOpen] = useState(false);
     const [isOsticketLoading, setIsOsticketLoading] = useState(false);
@@ -384,10 +421,12 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         Task['status'] | null
     >(null);
     const [hasSignature, setHasSignature] = useState(false);
+    const [signatureData, setSignatureData] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
     const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
     const isDrawingSignature = useRef(false);
     const selectAllOsticketRef = useRef<HTMLInputElement>(null);
+    const isTasksFullscreen = isNativeTasksFullscreen || isFallbackTasksFullscreen;
 
     useEffect(() => {
         setBoardTasks(tasks);
@@ -430,14 +469,24 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     }, [submissionSearch, submissionStatusFilter, taskPeriod, userFilter, view]);
 
     useEffect(() => {
-        if (!isTasksFullscreen) {
+        const handleFullscreenChange = (): void => {
+            setIsNativeTasksFullscreen(document.fullscreenElement === tasksSectionRef.current);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    useEffect(() => {
+        if (!isFallbackTasksFullscreen) {
             return;
         }
 
         const previousOverflow = document.body.style.overflow;
         const handleKeyDown = (event: KeyboardEvent): void => {
             if (event.key === 'Escape') {
-                setIsTasksFullscreen(false);
+                setIsFallbackTasksFullscreen(false);
             }
         };
 
@@ -448,7 +497,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             document.body.style.overflow = previousOverflow;
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isTasksFullscreen]);
+    }, [isFallbackTasksFullscreen]);
 
     useEffect(() => {
         const checkbox = selectAllOsticketRef.current;
@@ -481,11 +530,12 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     }, [exportApprover]);
 
     useEffect(() => {
-        if (!isPreviewOpen) {
+        if (!isExportOpen) {
             return;
         }
 
         setHasSignature(false);
+        setSignatureData('');
         requestAnimationFrame(() => {
             const canvas = signatureCanvasRef.current;
             const context = canvas?.getContext('2d');
@@ -494,7 +544,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 context.clearRect(0, 0, canvas.width, canvas.height);
             }
         });
-    }, [isPreviewOpen]);
+    }, [isExportOpen]);
 
     const filteredTasks = boardTasks.filter((task) => {
         const matchesQuery = task.title
@@ -506,12 +556,86 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         return matchesQuery && matchesPriority;
     });
 
+    const statusTasksFiltered = boardTasks.filter((task) => {
+        if (task.status !== statusTasksStatus) {
+            return false;
+        }
+
+        const searchValue = statusTasksSearch.trim().toLowerCase();
+        const matchesSearch = searchValue === '' || [
+            task.title,
+            task.description ?? '',
+            task.project?.name ?? '',
+        ].some((value) => value.toLowerCase().includes(searchValue));
+        const matchesDate = statusTasksDate === '' || task.due_date === statusTasksDate;
+
+        return matchesSearch && matchesDate;
+    });
+    const statusTasksPageSize = 8;
+    const statusTasksPageCount = Math.max(1, Math.ceil(statusTasksFiltered.length / statusTasksPageSize));
+    const paginatedStatusTasks = statusTasksFiltered.slice(
+        (statusTasksPage - 1) * statusTasksPageSize,
+        statusTasksPage * statusTasksPageSize,
+    );
+
     const listPageSize = 10;
     const listPageCount = Math.max(1, Math.ceil(filteredTasks.length / listPageSize));
     const paginatedTasks = filteredTasks.slice((listPage - 1) * listPageSize, listPage * listPageSize);
     useEffect(() => {
         setListPage(1);
     }, [query, priorityFilter, userFilter]);
+
+    useEffect(() => {
+        setStatusTasksPage(1);
+    }, [statusTasksSearch, statusTasksDate, statusTasksStatus]);
+
+    useEffect(() => {
+        if (statusTasksPage > statusTasksPageCount) {
+            setStatusTasksPage(statusTasksPageCount);
+        }
+    }, [statusTasksPage, statusTasksPageCount]);
+
+    const statusTasksTableColumns = useMemo(() => taskColumnHelper.columns([
+        taskColumnHelper.accessor('title', {
+            header: 'Task',
+            cell: ({ row }) => (
+                <div>
+                    <p className="font-semibold text-[#173d30]">{row.original.title}</p>
+                    <p className="mt-1 text-xs text-[#8aa097]">{row.original.project?.name ?? 'Tanpa project'}</p>
+                </div>
+            ),
+        }),
+        taskColumnHelper.accessor('description', {
+            header: 'Deskripsi',
+            cell: ({ row }) => (
+                <p className="max-w-[520px] whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
+                    {taskDescriptionPreview(row.original.description) ?? 'Tanpa deskripsi'}
+                </p>
+            ),
+        }),
+        taskColumnHelper.accessor('priority', {
+            header: 'Prioritas',
+            cell: ({ row }) => (
+                <span className={`inline-flex items-center gap-1 text-xs font-medium ${priorityStyles[row.original.priority].color}`}>
+                    <Flag className="size-3.5" /> {priorityStyles[row.original.priority].label}
+                </span>
+            ),
+        }),
+        taskColumnHelper.accessor('due_date', {
+            header: 'Tanggal',
+            cell: ({ row }) => (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-[#71877b]">
+                    <CalendarDays className="size-3.5" /> {formatDate(row.original.due_date)}
+                </span>
+            ),
+        }),
+    ]), []);
+
+    const statusTasksTable = useTable({
+        features: tasksTableFeatures,
+        data: paginatedStatusTasks,
+        columns: statusTasksTableColumns,
+    });
 
     useEffect(() => {
         if (listPage > listPageCount) {
@@ -556,6 +680,11 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     <GripVertical className="hidden size-4 text-[#b2c3b8] sm:block" />
                     <div>
                         <p className="text-sm font-semibold text-[#173d30]">{row.original.title}</p>
+                        {taskDescriptionPreview(row.original.description) && (
+                            <p className="mt-1 max-w-[480px] whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
+                                {taskDescriptionPreview(row.original.description)}
+                            </p>
+                        )}
                         <p className="mt-1 text-xs text-[#8aa097]">{row.original.project?.name ?? 'Tanpa project'}</p>
                     </div>
                 </div>
@@ -773,6 +902,35 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         setIsCreateOpen(true);
     }
 
+    function openStatusTasksDialog(status: Task['status']): void {
+        setStatusTasksStatus(status);
+        setStatusTasksSearch('');
+        setStatusTasksDate('');
+        setStatusTasksPage(1);
+    }
+
+    async function toggleTasksFullscreen(): Promise<void> {
+        const section = tasksSectionRef.current;
+
+        if (!section) {
+            return;
+        }
+
+        try {
+            if (isFallbackTasksFullscreen) {
+                setIsFallbackTasksFullscreen(false);
+            } else if (document.fullscreenElement) {
+                await document.exitFullscreen();
+            } else if (document.fullscreenEnabled && section.requestFullscreen) {
+                await section.requestFullscreen();
+            } else {
+                setIsFallbackTasksFullscreen(true);
+            }
+        } catch {
+            setIsFallbackTasksFullscreen(true);
+        }
+    }
+
     function changeUserFilter(value: string): void {
         setUserFilter(value);
         router.visit(tasksIndex.url({ query: { period: taskPeriod, user_id: value === 'all' ? undefined : value } }), {
@@ -966,6 +1124,25 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     function submitExport(event: FormEvent<HTMLFormElement>): void {
         event.preventDefault();
 
+        if (selectedSubmissionForExport !== null) {
+            const canvas = signatureCanvasRef.current;
+
+            if (!selectedSubmissionForExport.has_signature && (!canvas || !hasSignature)) {
+                toast.warning('Buat tanda tangan bawahan untuk melengkapi pengajuan lama.');
+
+                return;
+            }
+
+            if (canvas && hasSignature) {
+                setSignatureData(canvas.toDataURL('image/png'));
+            }
+
+            setIsExportOpen(false);
+            setIsPreviewOpen(true);
+
+            return;
+        }
+
         if (!period) {
             toast.warning('Pilih periode timesheet terlebih dahulu.');
 
@@ -978,12 +1155,23 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             return;
         }
 
+        const canvas = signatureCanvasRef.current;
+
+        if (!canvas || !hasSignature) {
+            toast.warning('Buat tanda tangan bawahan sebelum mengajukan timesheet.');
+
+            return;
+        }
+
+        setSignatureData(canvas.toDataURL('image/png'));
+
         router.post(storeTimesheetSubmission().url, {
             department,
             client,
             approved_by: approvedBy,
             approved_role: approvedRole,
             period: period.slice(0, 7),
+            signature_data: canvas.toDataURL('image/png'),
         }, {
             preserveScroll: true,
             onSuccess: () => {
@@ -1071,37 +1259,42 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             return;
         }
 
-        const canvas = signatureCanvasRef.current;
-
-        if (!usesSupervisorApproval && (!canvas || !hasSignature)) {
-            toast.warning('Buat tanda tangan sebelum download.');
-
-            return;
-        }
-
         setIsDownloading(true);
 
         try {
             const csrfToken = document
                 .querySelector('meta[name="csrf-token"]')
                 ?.getAttribute('content') ?? '';
+            const body = new URLSearchParams({
+                department,
+                client,
+                approved_by: approvedBy,
+                approved_role: approvedRole,
+                period: period.slice(0, 7),
+            });
+
+            if (signatureData !== '') {
+                body.set('signature_data', signatureData);
+            }
+
             const response = await fetch(exportTimesheet.url(), {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
                     Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
                     'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                body: new URLSearchParams({
-                    department,
-                    client,
-                    approved_by: approvedBy,
-                    approved_role: approvedRole,
-                    period: period.slice(0, 7),
-                    signature_data: usesSupervisorApproval ? '' : canvas?.toDataURL('image/png') ?? '',
-                }),
+                body,
             });
+
+            if (response.status === 419) {
+                toast.error('Sesi sudah kedaluwarsa. Halaman akan dimuat ulang.');
+                window.location.reload();
+
+                return;
+            }
 
             if (!response.ok) {
                 const payload = await response.json().catch(() => null) as { message?: string } | null;
@@ -1120,7 +1313,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             document.body.appendChild(anchor);
             anchor.click();
             anchor.remove();
-            URL.revokeObjectURL(downloadUrl);
+            window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
             setIsPreviewOpen(false);
             toast.success('Timesheet berhasil diunduh.');
         } catch (error) {
@@ -1181,7 +1374,10 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         </div>
                     </header>
 
-                    <section className={isTasksFullscreen ? 'fixed inset-0 z-50 min-w-0 space-y-4 overflow-y-auto bg-[#f8faf7] px-4 py-4 sm:px-6 sm:py-6 lg:px-10' : 'min-w-0 space-y-4'}>
+                    <section
+                        ref={tasksSectionRef}
+                        className={isTasksFullscreen ? 'fixed inset-0 z-50 min-h-screen min-w-0 space-y-4 overflow-y-auto bg-[#f8faf7] px-4 py-4 sm:px-6 sm:py-6 lg:px-10' : 'min-w-0 space-y-4'}
+                    >
                         <div className="flex flex-col gap-3 rounded-2xl border border-[#dfeae3] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-center justify-between gap-3">
                                 <div className="flex rounded-lg bg-[#f3f8f5] p-1">
@@ -1209,7 +1405,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => setIsTasksFullscreen((fullscreen) => !fullscreen)}
+                                    onClick={toggleTasksFullscreen}
                                     aria-pressed={isTasksFullscreen}
                                     aria-label={isTasksFullscreen ? 'Keluar dari fullscreen' : 'Buka task fullscreen'}
                                     title={isTasksFullscreen ? 'Keluar dari fullscreen (Esc)' : 'Buka task fullscreen'}
@@ -1361,13 +1557,27 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                         {columnTasks.length}
                                                     </span>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    className="rounded-md p-1 text-[#71877b] hover:bg-white/70"
-                                                    aria-label={`Menu ${column.label}`}
-                                                >
-                                                    <MoreHorizontal className="size-4" />
-                                                </button>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md p-1 text-[#71877b] hover:bg-white/70"
+                                                            aria-label={`Menu ${column.label}`}
+                                                        >
+                                                            <MoreHorizontal className="size-4" />
+                                                        </button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-52">
+                                                        <DropdownMenuLabel>
+                                                            {column.label}
+                                                        </DropdownMenuLabel>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onSelect={() => openStatusTasksDialog(column.key)}>
+                                                            <List className="size-4" />
+                                                            Lihat semua task
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
                                             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
                                                 {columnTasks.map((task) => (
@@ -1921,6 +2131,122 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <Dialog
+                open={statusTasksStatus !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setStatusTasksStatus(null);
+                    }
+                }}
+            >
+                <DialogContent className="flex max-h-[92vh] w-[calc(100%-1rem)] max-w-[1200px] flex-col overflow-hidden border-[#dfeae3] bg-white p-0 sm:max-w-[1200px]">
+                    <DialogHeader className="shrink-0 border-b border-[#eaf1ec] px-6 pt-6 pr-14 pb-4">
+                        <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
+                            Daftar task · {columns.find((column) => column.key === statusTasksStatus)?.label}
+                        </DialogTitle>
+                        <DialogDescription className="leading-6 text-[#71877b]">
+                            List task sesuai status board. Data hanya ditampilkan dan tidak diubah dari sini.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex shrink-0 flex-col gap-3 border-b border-[#eaf1ec] bg-[#f8faf7] px-6 py-4 sm:flex-row sm:items-end">
+                        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#dfeae3] bg-white px-3 text-[#9aac9f]">
+                            <Search className="size-4 shrink-0" />
+                            <span className="sr-only">Cari task</span>
+                            <input
+                                value={statusTasksSearch}
+                                onChange={(event) => setStatusTasksSearch(event.target.value)}
+                                placeholder="Cari task atau deskripsi..."
+                                className="h-11 min-w-0 flex-1 bg-transparent text-sm text-[#173d30] outline-none placeholder:text-[#9aac9f]"
+                            />
+                        </label>
+                        <div className="w-full sm:w-[220px]">
+                            <Label className="mb-1.5 block text-xs text-[#71877b]">
+                                Filter tanggal
+                            </Label>
+                            <DatePicker
+                                value={statusTasksDate}
+                                onChange={setStatusTasksDate}
+                                placeholder="Semua tanggal"
+                            />
+                        </div>
+                        {statusTasksDate && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setStatusTasksDate('')}
+                                className="h-11 shrink-0 rounded-xl border-[#dfeae3] px-3 text-xs text-[#557067]"
+                            >
+                                <Eraser className="size-3.5" />
+                                Reset
+                            </Button>
+                        )}
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+                        <div className="overflow-hidden rounded-xl border border-[#dfeae3]">
+                            <Table className="min-w-[900px] text-left">
+                                <TableHeader className="bg-[#f8faf7] text-[11px] text-[#71877b]">
+                                    {statusTasksTable.getHeaderGroups().map((headerGroup) => (
+                                        <TableRow key={headerGroup.id}>
+                                            {headerGroup.headers.map((header) => (
+                                                <TableHead key={header.id}>
+                                                    {header.isPlaceholder ? null : statusTasksTable.FlexRender({ header })}
+                                                </TableHead>
+                                            ))}
+                                        </TableRow>
+                                    ))}
+                                </TableHeader>
+                                <TableBody>
+                                    {statusTasksTable.getRowModel().rows.length > 0 ? statusTasksTable.getRowModel().rows.map((row) => (
+                                        <TableRow key={row.id} className="align-top hover:bg-[#fbfdfb]">
+                                            {row.getAllCells().map((cell) => (
+                                                <TableCell key={cell.id} className="py-4">
+                                                    {statusTasksTable.FlexRender({ cell })}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    )) : (
+                                        <TableRow>
+                                            <TableCell colSpan={statusTasksTableColumns.length} className="h-28 text-center text-sm text-[#71877b]">
+                                                Tidak ada task yang cocok.
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-3 border-t border-[#eaf1ec] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-[#8aa097]">
+                            {statusTasksFiltered.length > 0
+                                ? `Menampilkan ${(statusTasksPage - 1) * statusTasksPageSize + 1}–${Math.min(statusTasksPage * statusTasksPageSize, statusTasksFiltered.length)} dari ${statusTasksFiltered.length} task`
+                                : '0 task'}
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={statusTasksPage === 1}
+                                onClick={() => setStatusTasksPage((page) => Math.max(1, page - 1))}
+                                className="h-9 rounded-lg border-[#dfeae3] px-3 text-xs text-[#557067]"
+                            >
+                                Sebelumnya
+                            </Button>
+                            <span className="min-w-24 text-center text-xs text-[#71877b]">
+                                Halaman {statusTasksPage} dari {statusTasksPageCount}
+                            </span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={statusTasksPage === statusTasksPageCount}
+                                onClick={() => setStatusTasksPage((page) => Math.min(statusTasksPageCount, page + 1))}
+                                className="h-9 rounded-lg border-[#dfeae3] px-3 text-xs text-[#557067]"
+                            >
+                                Berikutnya
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
             <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
                 <DialogContent className="max-h-[90vh] overflow-y-auto border-[#dfeae3] bg-white sm:max-w-[720px]">
                     <DialogHeader className="border-b border-[#eaf1ec] pb-4">
@@ -2023,7 +2349,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </div>
                             <div className="rounded-xl border border-[#eaf1ec] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#71877b]">
                                 <p>Jam kerja mengikuti template: <strong className="font-semibold text-[#557067]">08.00–17.00</strong>.</p>
-                                <p className="mt-1">Sabtu dan Minggu otomatis ditandai <strong className="font-semibold text-[#d44f4f]">TANGGAL MERAH</strong>.</p>
+                                <p className="mt-1">Sabtu dan Minggu otomatis ditandai dengan tanggal berwarna merah.</p>
                             </div>
                         </div>
                         {usesSupervisorApproval && (
@@ -2031,6 +2357,41 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 Data atasan diambil otomatis dari relasi akun. Download timesheet hanya tersedia setelah semua task pada periode ini disetujui atasan.
                             </div>
                         )}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <Label htmlFor="timesheet-signature">
+                                        Tanda tangan pengaju
+                                    </Label>
+                                    <p className="mt-1 text-xs text-[#71877b]">
+                                        Tanda tangan disimpan bersama pengajuan dan digunakan saat download timesheet approved.
+                                    </p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={clearSignature}
+                                    className="h-9 rounded-lg border-[#dfeae3] px-3 text-xs text-[#557067]"
+                                >
+                                    <Eraser className="size-3.5" />
+                                    Hapus
+                                </Button>
+                            </div>
+                            <div className="overflow-hidden rounded-xl border border-dashed border-[#b9d7c3] bg-white">
+                                <canvas
+                                    id="timesheet-signature"
+                                    ref={signatureCanvasRef}
+                                    width={760}
+                                    height={190}
+                                    onPointerDown={startSignature}
+                                    onPointerMove={drawSignature}
+                                    onPointerUp={endSignature}
+                                    onPointerLeave={endSignature}
+                                    className="block h-36 w-full touch-none cursor-crosshair"
+                                    aria-label="Area tanda tangan pengaju"
+                                />
+                            </div>
+                        </div>
                         <DialogFooter className="border-t border-[#eaf1ec] pt-4">
                             <Button
                                 type="button"
@@ -2044,8 +2405,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 type="submit"
                                 className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"
                             >
-                                <Eye className="size-4" />
-                                Lihat preview
+                                <PenLine className="size-4" />
+                                {selectedSubmissionForExport === null ? 'Ajukan timesheet' : 'Lanjutkan ke download'}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -2053,13 +2414,13 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             </Dialog>
             <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
                 <DialogContent className="max-h-[92vh] overflow-y-auto border-[#dfeae3] bg-white sm:max-w-[1040px]">
-                    <DialogHeader className="border-b border-[#eaf1ec] pb-4">
-                        <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
-                            Preview pengajuan timesheet
-                        </DialogTitle>
-                        <DialogDescription className="leading-6 text-[#71877b]">
-                            Periksa data sebelum download. Tanda tangan atasan diambil dari approval task.
-                        </DialogDescription>
+                        <DialogHeader className="border-b border-[#eaf1ec] pb-4">
+                            <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
+                            Konfirmasi timesheet
+                            </DialogTitle>
+                            <DialogDescription className="leading-6 text-[#71877b]">
+                            Data pengajuan tersimpan. Tanda tangan atasan diambil dari approval task.
+                            </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={downloadExport} className="grid gap-5">
                         <div className="grid gap-3 rounded-xl border border-[#dfeae3] bg-[#f8faf7] p-4 text-sm sm:grid-cols-2">
@@ -2125,47 +2486,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 )}
                             </div>
                         </div>
-                        {usesSupervisorApproval ? (
-                            <div className="rounded-xl border border-[#d9e9df] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#557067]">
-                                Setelah semua task disetujui, file akan memakai tanda tangan atasan dari approval task.
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <Label htmlFor="timesheet-signature">
-                                            Tanda tangan Created By
-                                        </Label>
-                                        <p className="mt-1 text-xs text-[#71877b]">
-                                            Tanda tangan akan ditempatkan di bawah Created By pada file Excel.
-                                        </p>
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={clearSignature}
-                                        className="h-9 rounded-lg border-[#dfeae3] px-3 text-xs text-[#557067]"
-                                    >
-                                        <Eraser className="size-3.5" />
-                                        Hapus
-                                    </Button>
-                                </div>
-                                <div className="overflow-hidden rounded-xl border border-dashed border-[#b9d7c3] bg-white">
-                                    <canvas
-                                        id="timesheet-signature"
-                                        ref={signatureCanvasRef}
-                                        width={760}
-                                        height={190}
-                                        onPointerDown={startSignature}
-                                        onPointerMove={drawSignature}
-                                        onPointerUp={endSignature}
-                                        onPointerLeave={endSignature}
-                                        className="block h-36 w-full touch-none cursor-crosshair"
-                                        aria-label="Area tanda tangan"
-                                    />
-                                </div>
-                            </div>
-                        )}
+                        <div className="rounded-xl border border-[#d9e9df] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#71877b]">
+                            Tanda tangan bawahan sudah tersimpan pada data pengajuan. Tanda tangan atasan akan ditambahkan dari hasil approval.
+                        </div>
                         {usesSupervisorApproval && !canDownloadTimesheet && (
                             <div className="rounded-xl border border-[#ecd9a4] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#8a681f]">
                                 Download terkunci sampai semua task pada periode {period.slice(0, 7)} disetujui atasan.

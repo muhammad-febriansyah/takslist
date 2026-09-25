@@ -28,11 +28,7 @@ class ExportTimesheetRequest extends FormRequest
             'approved_by' => ['required', 'string', 'max:120'],
             'approved_role' => ['nullable', 'string', 'max:120'],
             'period' => ['required', 'date_format:Y-m'],
-            'signature_data' => [
-                $this->user()?->isBawahan() ? 'nullable' : 'required',
-                'string',
-                'max:1000000',
-            ],
+            'signature_data' => ['nullable', 'string', 'starts_with:data:image/png;base64,', 'max:1000000'],
         ];
     }
 }

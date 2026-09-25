@@ -18,6 +18,13 @@ class TimesheetExportController extends Controller
         /** @var User $user */
         $user = $request->user();
         $options = $request->validated();
+        $options['signature_data'] ??= $service->signatureDataForSubmission($user, $options['period']);
+
+        if ($options['signature_data'] === null) {
+            return response()->json([
+                'message' => 'Tanda tangan bawahan belum tersimpan. Ajukan ulang timesheet dengan tanda tangan.',
+            ], 422);
+        }
 
         if ($user->isBawahan() && ! $service->canExportForPeriod($user, $options['period'])) {
             return response()->json([
@@ -35,7 +42,7 @@ class TimesheetExportController extends Controller
                 ], 422);
             }
 
-            $options['signature_data'] = $supervisorSignature;
+            $options['supervisor_signature_data'] = $supervisorSignature;
             $options['approved_by'] = $user->supervisor?->name ?? $options['approved_by'];
             $options['approved_role'] = $user->supervisor?->position ?? $options['approved_role'];
         }

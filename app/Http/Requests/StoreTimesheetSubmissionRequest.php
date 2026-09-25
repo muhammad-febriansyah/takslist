@@ -21,6 +21,7 @@ class StoreTimesheetSubmissionRequest extends FormRequest
             'approved_by' => ['required', 'string', 'max:120'],
             'approved_role' => ['nullable', 'string', 'max:120'],
             'period' => ['required', 'date_format:Y-m'],
+            'signature_data' => ['required', 'string', 'starts_with:data:image/png;base64,', 'max:1500000'],
         ];
     }
 }
