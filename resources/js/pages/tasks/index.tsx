@@ -748,7 +748,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         task.due_date?.startsWith(period.slice(0, 7)),
     );
     const canDownloadTimesheet = selectedSubmissionForExport !== null
-        ? selectedSubmissionForExport.can_download
+        ? selectedSubmissionForExport.can_download && selectedSubmissionForExport.has_signature
         : !usesSupervisorApproval
             || (previewTasks.length > 0
                 && previewTasks.every((task) => task.review?.status === 'approved' && task.review.signature_url));
@@ -1135,16 +1135,10 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         }
 
         if (selectedSubmissionForExport !== null) {
-            const canvas = signatureCanvasRef.current;
-
-            if (!selectedSubmissionForExport.has_signature && (!canvas || !hasSignature)) {
-                toast.warning('Buat tanda tangan bawahan untuk melengkapi pengajuan lama.');
+            if (!selectedSubmissionForExport.has_signature) {
+                toast.warning('Pengajuan ini belum memiliki tanda tangan bawahan. Buat pengajuan baru untuk menyimpan tanda tangan.');
 
                 return;
-            }
-
-            if (canvas && hasSignature) {
-                setSignatureData(canvas.toDataURL('image/png'));
             }
 
             setIsExportOpen(false);
@@ -2409,6 +2403,11 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </div>
                             </div>
                         )}
+                        {selectedSubmissionForExport !== null && !selectedSubmissionForExport.has_signature && (
+                            <div className="rounded-xl border border-[#ecd9a4] bg-[#fffaf0] px-4 py-4 text-sm leading-6 text-[#8a681f]">
+                                Tanda tangan bawahan belum tersimpan pada pengajuan lama ini. Pengajuan tidak dapat di-download dengan meminta tanda tangan kedua; buat pengajuan baru agar tanda tangan tersimpan dengan benar.
+                            </div>
+                        )}
                         <DialogFooter className="border-t border-[#eaf1ec] pt-4">
                             <Button
                                 type="button"
@@ -2420,7 +2419,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </Button>
                             <Button
                                 type="submit"
-                                disabled={hasExistingSubmission}
+                                disabled={hasExistingSubmission || (selectedSubmissionForExport !== null && !selectedSubmissionForExport.has_signature)}
                                 className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"
                             >
                                 <PenLine className="size-4" />
