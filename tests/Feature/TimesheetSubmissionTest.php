@@ -34,6 +34,38 @@ it('stores one timesheet submission per user and period', function () use ($sign
         ->status->toBe('pending');
 });
 
+it('does not create a duplicate submission for the same user and period', function () use ($signatureData) {
+    Storage::fake('public');
+    $user = User::factory()->create();
+
+    $payload = [
+        'department' => 'Product',
+        'client' => 'SIM',
+        'approved_by' => 'Atasan TaskFlow',
+        'approved_role' => 'Atasan',
+        'period' => '2026-09',
+        'signature_data' => $signatureData,
+    ];
+
+    $this->actingAs($user)
+        ->post(route('tasks.timesheet-submissions.store'), $payload)
+        ->assertRedirect();
+
+    $originalSignaturePath = TimesheetSubmission::query()
+        ->where('user_id', $user->id)
+        ->value('signature_path');
+
+    $this->actingAs($user)
+        ->post(route('tasks.timesheet-submissions.store'), $payload)
+        ->assertSessionHasErrors([
+            'period' => 'Pengajuan timesheet periode ini sudah ada. Tidak perlu membuat pengajuan lagi.',
+        ]);
+
+    expect(TimesheetSubmission::query()->where('user_id', $user->id)->count())->toBe(1)
+        ->and(TimesheetSubmission::query()->where('user_id', $user->id)->value('signature_path'))
+        ->toBe($originalSignaturePath);
+});
+
 it('sends completed period tasks to the supervisor when a timesheet is submitted', function () use ($signatureData) {
     $supervisor = User::factory()->state(['role' => 'atasan'])->create();
     $subordinate = User::factory()->state([

@@ -150,6 +150,11 @@ class TaskController extends Controller
             ];
         }));
 
+        $submittedPeriods = $user->timesheetSubmissions()
+            ->pluck('period')
+            ->values()
+            ->all();
+
         return Inertia::render('tasks/index', [
             'tasks' => $tasks,
             'search' => $search,
@@ -158,6 +163,7 @@ class TaskController extends Controller
             'submission_search' => $submissionSearch,
             'submission_status' => $submissionStatus,
             'timesheet_submissions' => $submissions,
+            'timesheet_submission_periods' => $submittedPeriods,
             'export_approver' => $user->isBawahan()
                 ? $user->supervisor?->only(['id', 'name', 'role', 'position'])
                 : null,

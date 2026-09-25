@@ -98,6 +98,7 @@ type Props = {
     export_approver?: { id: number; name: string; role: 'admin' | 'atasan' | 'bawahan'; position: string | null } | null;
     submission_search?: string;
     submission_status?: string;
+    timesheet_submission_periods?: string[];
     timesheet_submissions?: {
         data: TimesheetSubmission[];
         current_page: number;
@@ -373,7 +374,7 @@ function TaskCard({
     );
 }
 
-export default function Tasks({ tasks, search: initialSearch = '', user_id: initialUserId = null, period: initialPeriod = getTodayValue().slice(0, 7), users = [], export_approver: exportApprover = null, submission_search: initialSubmissionSearch = '', submission_status: initialSubmissionStatus = '', timesheet_submissions: timesheetSubmissions = { data: [], current_page: 1, last_page: 1, from: null, to: null, total: 0 } }: Props) {
+export default function Tasks({ tasks, search: initialSearch = '', user_id: initialUserId = null, period: initialPeriod = getTodayValue().slice(0, 7), users = [], export_approver: exportApprover = null, submission_search: initialSubmissionSearch = '', submission_status: initialSubmissionStatus = '', timesheet_submission_periods: submittedPeriods = [], timesheet_submissions: timesheetSubmissions = { data: [], current_page: 1, last_page: 1, from: null, to: null, total: 0 } }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const canManageTasks = auth.user.role !== 'admin';
     const usesSupervisorApproval = auth.user.role === 'bawahan';
@@ -751,6 +752,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         : !usesSupervisorApproval
             || (previewTasks.length > 0
                 && previewTasks.every((task) => task.review?.status === 'approved' && task.review.signature_url));
+    const selectedPeriodKey = period.slice(0, 7);
+    const hasExistingSubmission = selectedSubmissionForExport === null
+        && submittedPeriods.includes(selectedPeriodKey);
     const submissionTableColumns = submissionColumnHelper.columns([
         submissionColumnHelper.accessor('period', {
             header: 'Periode',
@@ -1124,6 +1128,12 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     function submitExport(event: FormEvent<HTMLFormElement>): void {
         event.preventDefault();
 
+        if (selectedSubmissionForExport === null && hasExistingSubmission) {
+            toast.info(`Pengajuan timesheet periode ${formatMonth(selectedPeriodKey)} sudah tersimpan. Tidak perlu membuat pengajuan lagi.`);
+
+            return;
+        }
+
         if (selectedSubmissionForExport !== null) {
             const canvas = signatureCanvasRef.current;
 
@@ -1178,7 +1188,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 setIsExportOpen(false);
                 setIsPreviewOpen(true);
             },
-            onError: () => toast.error('Pengajuan timesheet gagal disimpan.'),
+            onError: (errors) => toast.error(errors.period ?? errors.signature_data ?? 'Pengajuan timesheet gagal disimpan.'),
         });
     }
 
@@ -2357,7 +2367,13 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 Data atasan diambil otomatis dari relasi akun. Download timesheet hanya tersedia setelah semua task pada periode ini disetujui atasan.
                             </div>
                         )}
-                        <div className="space-y-3">
+                        {hasExistingSubmission ? (
+                            <div className="rounded-xl border border-[#cfe2d5] bg-[#f3faf5] px-4 py-4 text-sm leading-6 text-[#236d49]">
+                                <p className="font-semibold">Pengajuan periode {formatMonth(selectedPeriodKey)} sudah tersimpan.</p>
+                                <p className="mt-1 text-[#557067]">Tidak perlu membuat pengajuan kedua. Buka tab Pengajuan untuk melihat status dan download setelah disetujui.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <Label htmlFor="timesheet-signature">
@@ -2391,7 +2407,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     aria-label="Area tanda tangan pengaju"
                                 />
                             </div>
-                        </div>
+                            </div>
+                        )}
                         <DialogFooter className="border-t border-[#eaf1ec] pt-4">
                             <Button
                                 type="button"
@@ -2403,10 +2420,11 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </Button>
                             <Button
                                 type="submit"
+                                disabled={hasExistingSubmission}
                                 className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"
                             >
                                 <PenLine className="size-4" />
-                                {selectedSubmissionForExport === null ? 'Ajukan timesheet' : 'Lanjutkan ke download'}
+                                {hasExistingSubmission ? 'Sudah diajukan' : selectedSubmissionForExport === null ? 'Ajukan timesheet' : 'Lanjutkan ke download'}
                             </Button>
                         </DialogFooter>
                     </form>

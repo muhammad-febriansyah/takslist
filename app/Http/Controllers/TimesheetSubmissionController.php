@@ -21,6 +21,13 @@ class TimesheetSubmissionController extends Controller
     ): RedirectResponse {
         $user = $request->user();
         $data = $request->validated();
+
+        if ($user->timesheetSubmissions()->where('period', $data['period'])->exists()) {
+            throw ValidationException::withMessages([
+                'period' => 'Pengajuan timesheet periode ini sudah ada. Tidak perlu membuat pengajuan lagi.',
+            ]);
+        }
+
         $signatureData = $data['signature_data'];
         $signatureBinary = base64_decode(Str::after($signatureData, 'data:image/png;base64,'), true);
 
@@ -45,15 +52,12 @@ class TimesheetSubmissionController extends Controller
             ? $reviewService->submitCompletedTasks($user, $data['period'])
             : collect();
 
-        $existingSubmission = $user->timesheetSubmissions()->firstWhere('period', $data['period']);
-        $submission = $user->timesheetSubmissions()->updateOrCreate(
-            ['period' => $data['period']],
-            [...$data, 'signature_path' => $signaturePath, 'status' => 'pending', 'submitted_at' => now()],
-        );
-
-        if ($existingSubmission?->signature_path !== null) {
-            Storage::disk('public')->delete($existingSubmission->signature_path);
-        }
+        $submission = $user->timesheetSubmissions()->create([
+            ...$data,
+            'signature_path' => $signaturePath,
+            'status' => 'pending',
+            'submitted_at' => now(),
+        ]);
 
         $service->syncSubmissionStatus($submission);
 
