@@ -22,7 +22,7 @@ class CreateNewUser implements CreatesNewUsers
     {
         Validator::make($input, [
             ...$this->profileRules(),
-            'password' => $this->passwordRules(),
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
             'supervisor_id' => [
                 Rule::requiredIf(User::query()->where('role', 'atasan')->where('is_active', true)->exists()),
                 'nullable',

@@ -27,6 +27,19 @@ test('new users can register', function () {
     expect($this->app->make('auth')->user()->role)->toBe('bawahan');
 });
 
+test('registration rejects passwords shorter than 8 characters', function () {
+    $response = $this->from(route('register'))->post(route('register.store'), [
+        'name' => 'Short Password User',
+        'email' => 'short-password@example.com',
+        'password' => 'shorter',
+        'password_confirmation' => 'shorter',
+    ]);
+
+    $response->assertRedirect(route('register'))
+        ->assertSessionHasErrors('password');
+    $this->assertGuest();
+});
+
 test('new subordinate users can be assigned to an active supervisor', function () {
     $supervisor = User::factory()->atasan()->create();
 

@@ -101,7 +101,7 @@ class FortifyServiceProvider extends ServiceProvider
         ]));
 
         Fortify::registerView(fn () => Inertia::render('auth/register', [
-            'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            'passwordRules' => Password::min(8)->toPasswordRulesString(),
             'supervisors' => User::query()
                 ->where('role', 'atasan')
                 ->where('is_active', true)
