@@ -45,10 +45,31 @@ class HandleInertiaRequests extends Middleware
             'name' => $siteSettings->site_name,
             'siteSettings' => $siteSettings->toPublicArray(),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $this->userForClient($request),
             ],
             'notifications' => $this->notifications($request),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+        ];
+    }
+
+    /**
+     * Add public URL to avatar while keeping storage path private to the backend.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function userForClient(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        return [
+            ...$user->toArray(),
+            'avatar' => $user->avatar === null
+                ? null
+                : '/storage/'.ltrim($user->avatar, '/'),
         ];
     }
 

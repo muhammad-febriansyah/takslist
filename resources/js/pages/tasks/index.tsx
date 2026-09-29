@@ -388,6 +388,7 @@ function TaskCard({
 export default function Tasks({ tasks, search: initialSearch = '', user_id: initialUserId = null, period: initialPeriod = getTodayValue().slice(0, 7), users = [], export_approver: exportApprover = null, submission_search: initialSubmissionSearch = '', submission_status: initialSubmissionStatus = '', timesheet_submission_periods: submittedPeriods = [], timesheet_submissions: timesheetSubmissions = { data: [], current_page: 1, last_page: 1, from: null, to: null, total: 0 } }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const canManageTasks = auth.user.role !== 'admin';
+    const canViewSubmissions = auth.user.role !== 'atasan';
     const usesSupervisorApproval = auth.user.role === 'bawahan';
     const [boardTasks, setBoardTasks] = useState(tasks);
     const [view, setView] = useState<'board' | 'list' | 'submissions'>('board');
@@ -1480,13 +1481,15 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     >
                                         <List className="size-4" /> List
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setView('submissions')}
-                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'submissions' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
-                                    >
-                                        <ClipboardList className="size-4" /> Pengajuan
-                                    </button>
+                                    {canViewSubmissions && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setView('submissions')}
+                                            className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'submissions' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                        >
+                                            <ClipboardList className="size-4" /> Pengajuan
+                                        </button>
+                                    )}
                                 </div>
                                 <button
                                     type="button"
