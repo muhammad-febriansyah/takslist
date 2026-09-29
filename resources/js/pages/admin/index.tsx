@@ -75,7 +75,7 @@ export default function AdminMonitoring({ metrics, statusCounts, users, recentTa
                 </section>
 
                 <section className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-                    <div className="rounded-3xl border border-[#e1eee7] bg-white p-5 shadow-[0_6px_18px_rgba(32,83,57,0.04)] sm:p-7">
+                    <div className="rounded-3xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                         <div className="mb-6 flex items-center justify-between">
                             <div>
                                 <h2 className="text-lg font-semibold tracking-[-0.03em] text-[#173d30]">Komposisi status task</h2>
@@ -105,7 +105,7 @@ export default function AdminMonitoring({ metrics, statusCounts, users, recentTa
                         <div className="mt-6 border-t border-[#edf3ef] pt-4"><Chart options={chartOptions} series={[statusCounts.todo ?? 0, statusCounts.in_progress ?? 0, statusCounts.review ?? 0, statusCounts.done ?? 0]} type="donut" height={250} /></div>
                     </div>
 
-                    <div className="rounded-3xl border border-[#e1eee7] bg-white p-5 shadow-[0_6px_18px_rgba(32,83,57,0.04)] sm:p-7">
+                    <div className="rounded-3xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold tracking-[-0.03em] text-[#173d30]">Pengguna dan atasan</h2>
                             <p className="mt-1 text-xs text-[#8aa097]">Struktur akses aktif</p>
@@ -127,7 +127,7 @@ export default function AdminMonitoring({ metrics, statusCounts, users, recentTa
                     </div>
                 </section>
 
-                <section className="mt-6 rounded-3xl border border-[#e1eee7] bg-white p-5 shadow-[0_6px_18px_rgba(32,83,57,0.04)] sm:p-7">
+                <section className="mt-6 rounded-3xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                     <div className="mb-5">
                         <h2 className="text-lg font-semibold tracking-[-0.03em] text-[#173d30]">Task terbaru</h2>
                         <p className="mt-1 text-xs text-[#8aa097]">Pengecekan aktivitas terbaru tanpa aksi edit.</p>
@@ -171,7 +171,7 @@ function MetricCard({ icon: Icon, label, value, tone }: { icon: typeof Users; la
     };
 
     return (
-        <div className="rounded-3xl border border-[#e1eee7] bg-white p-5 shadow-[0_6px_18px_rgba(32,83,57,0.04)]">
+        <div className="rounded-3xl border border-[#e8f0eb] bg-white p-5 shadow-none">
             <div className={'mb-5 flex size-11 items-center justify-center rounded-2xl ' + tones[tone]}><Icon className="size-5" /></div>
             <p className="text-sm text-[#82998e]">{label}</p>
             <p className="mt-1 text-3xl font-semibold tracking-[-0.05em] text-[#173d30]">{value}</p>

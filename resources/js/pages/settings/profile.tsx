@@ -59,7 +59,7 @@ export default function Profile() {
                 </div>
 
                 <div className="grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-                    <section className="rounded-[28px] border border-[#e1eee7] bg-white p-5 shadow-[0_10px_30px_rgba(32,83,57,0.05)] sm:p-7">
+                    <section className="rounded-[28px] border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                         <div className="mb-7 flex items-center gap-3">
                             <span className="flex size-11 items-center justify-center rounded-2xl bg-[#eaf6ee] text-[#2d8b60]"><UserRound className="size-5" /></span>
                             <div>
@@ -110,15 +110,17 @@ export default function Profile() {
                                             <Label htmlFor="role">Peran</Label>
                                             <Input id="role" value={roleLabels[auth.user.role]} readOnly className="h-12 rounded-2xl border-[#e5eee8] bg-[#f5f9f6] text-[#8aa097]" />
                                         </div>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="position">Jabatan</Label>
-                                            <Input id="position" value={auth.user.position ?? 'Belum diatur'} readOnly className="h-12 rounded-2xl border-[#e5eee8] bg-[#f5f9f6] text-[#8aa097]" />
-                                        </div>
+                                        {auth.user.position && (
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="position">Jabatan</Label>
+                                                <Input id="position" value={auth.user.position} readOnly className="h-12 rounded-2xl border-[#e5eee8] bg-[#f5f9f6] text-[#8aa097]" />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center justify-between gap-4 border-t border-[#edf3ef] pt-5">
                                         <p className="text-xs leading-5 text-[#8aa097]">Perubahan profil tersimpan langsung.</p>
-                                        <Button type="submit" disabled={processing} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(45,139,96,0.2)] hover:bg-[#247850]">
+                                        <Button type="submit" disabled={processing} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white shadow-none hover:bg-[#247850]">
                                             <Save className="size-4" />
                                             {processing ? 'Menyimpan...' : 'Simpan profil'}
                                         </Button>
@@ -128,7 +130,7 @@ export default function Profile() {
                         </Form>
                     </section>
 
-                    <section className="rounded-[28px] border border-[#e1eee7] bg-white p-5 shadow-[0_10px_30px_rgba(32,83,57,0.05)] sm:p-7">
+                    <section className="rounded-[28px] border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                         <div className="mb-7 flex items-center gap-3">
                             <span className="flex size-11 items-center justify-center rounded-2xl bg-[#fff5df] text-[#c18822]"><KeyRound className="size-5" /></span>
                             <div>
@@ -163,7 +165,7 @@ export default function Profile() {
                                         <InputError message={errors.password_confirmation} />
                                     </div>
                                     <div className="flex justify-end border-t border-[#edf3ef] pt-5">
-                                        <Button type="submit" disabled={processing} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(45,139,96,0.2)] hover:bg-[#247850]">
+                                        <Button type="submit" disabled={processing} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white shadow-none hover:bg-[#247850]">
                                             <Check className="size-4" />
                                             {processing ? 'Menyimpan...' : 'Simpan kata sandi'}
                                         </Button>

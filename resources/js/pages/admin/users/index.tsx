@@ -280,7 +280,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
                     </Button>
                 </div>
 
-                <section className="overflow-hidden rounded-3xl border border-[#e1eee7] bg-white shadow-[0_6px_18px_rgba(32,83,57,0.04)]">
+                <section className="overflow-hidden rounded-3xl border border-[#e8f0eb] bg-white shadow-none">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf3ef] px-5 py-4 sm:px-7">
                         <div className="flex items-center gap-3">
                             <span className="flex size-10 items-center justify-center rounded-2xl bg-[#eaf6ee] text-[#2d875c]"><Users className="size-5" /></span>

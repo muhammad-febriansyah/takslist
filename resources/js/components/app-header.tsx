@@ -356,7 +356,7 @@ export function AppHeader(_props: Props) {
                             </label>
                         </form>
                         {search.trim().length >= 2 && (
-                            <div className="absolute top-12 right-0 z-50 w-[380px] overflow-hidden rounded-2xl border border-[#dfeae3] bg-white shadow-[0_18px_45px_rgba(23,61,48,0.16)]">
+                            <div className="absolute top-12 right-0 z-50 w-[380px] overflow-hidden rounded-2xl border border-[#e7efe9] bg-white shadow-[0_8px_24px_rgba(23,61,48,0.10)]">
                                 {isSearchLoading ? (
                                     <p className="px-4 py-5 text-center text-xs text-[#8aa097]">Mencari data...</p>
                                 ) : searchResults.length > 0 ? (

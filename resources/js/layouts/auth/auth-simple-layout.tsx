@@ -54,7 +54,7 @@ export default function AuthSimpleLayout({
                 </div>
 
                 <div className="pointer-events-none absolute top-1/2 left-[7%] hidden -translate-y-1/2 -rotate-6 lg:block">
-                    <div className="w-60 rounded-3xl border border-[#eaf2ec] bg-white/80 p-6 shadow-[0_14px_35px_rgba(31,89,59,.1)] backdrop-blur">
+                    <div className="w-60 rounded-3xl border border-[#eaf2ec] bg-white/80 p-6 shadow-[0_6px_18px_rgba(31,89,59,.06)] backdrop-blur">
                         <p className="mb-4 text-sm font-medium text-[#225e3d]">Hari ini</p>
                         <div className="grid gap-4 text-sm text-[#225e3d]/80">
                             {['Rencanakan pekerjaan', 'Bangun komponen UI', 'Review konten produk'].map((task, index) => (
@@ -77,8 +77,8 @@ export default function AuthSimpleLayout({
                 </div>
 
                 <main className="relative z-10 flex min-h-svh items-center justify-center px-4 py-10 md:px-8">
-                    <section className="relative w-full max-w-[540px] rounded-[30px] border border-[#d5e5da]/80 bg-white/90 px-6 py-7 shadow-[0_24px_70px_rgba(31,89,59,.1)] backdrop-blur sm:px-9 sm:py-8">
-                        <div className="pointer-events-none absolute -top-1 right-5 hidden items-center gap-4 rounded-2xl border border-[#eaf2ec] bg-white px-5 py-4 shadow-[0_14px_35px_rgba(31,89,59,.1)] sm:flex xl:-right-28 xl:top-8">
+                    <section className="relative w-full max-w-[540px] rounded-[30px] border border-[#e5eee8] bg-white/90 px-6 py-7 shadow-[0_8px_24px_rgba(31,89,59,.06)] backdrop-blur sm:px-9 sm:py-8">
+                        <div className="pointer-events-none absolute -top-1 right-5 hidden items-center gap-4 rounded-2xl border border-[#eaf2ec] bg-white px-5 py-4 shadow-[0_6px_18px_rgba(31,89,59,.06)] sm:flex xl:-right-28 xl:top-8">
                             <div className="flex items-end gap-1">
                                 <span className="h-4 w-1.5 rounded-full bg-[#83af91]" />
                                 <span className="h-7 w-1.5 rounded-full bg-[#36764f]" />

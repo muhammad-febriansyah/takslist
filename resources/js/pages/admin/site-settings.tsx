@@ -40,7 +40,7 @@ export default function SiteSettingsPage({ settings }: Props) {
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-[#7f978d]">Atur identitas TaskFlow. Perubahan langsung dipakai pada header dan halaman publik.</p>
                     </div>
 
-                    <Form {...update.form()} options={{ preserveScroll: true }} className="rounded-3xl border border-[#e1eee7] bg-white p-5 shadow-[0_6px_18px_rgba(32,83,57,0.04)] sm:p-7">
+                    <Form {...update.form()} options={{ preserveScroll: true }} className="rounded-3xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                         {({ processing, errors }) => (
                             <div className="space-y-6">
                                 <div className="grid gap-5 sm:grid-cols-2">
@@ -65,7 +65,7 @@ export default function SiteSettingsPage({ settings }: Props) {
                                 <div className="grid gap-2">
                                     <Label htmlFor="logo">Logo PNG</Label>
                                     <label className="flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-[#b9d8c4] bg-[#f5fbf7] p-4 transition-colors hover:bg-[#edf8f0]">
-                                        <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white text-[#3b9362] shadow-sm">
+                                        <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white text-[#3b9362] shadow-none">
                                             {logoPreview ? <img src={logoPreview} alt="" className="size-full object-contain p-1.5" /> : <ImagePlus className="size-5" />}
                                         </span>
                                         <span className="min-w-0">
@@ -85,7 +85,7 @@ export default function SiteSettingsPage({ settings }: Props) {
                                 <div className="grid gap-2">
                                     <Label htmlFor="favicon">Favicon PNG</Label>
                                     <label className="flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-[#b9d8c4] bg-[#f5fbf7] p-4 transition-colors hover:bg-[#edf8f0]">
-                                        <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white text-[#3b9362] shadow-sm">
+                                        <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white text-[#3b9362] shadow-none">
                                             {faviconPreview ? <img src={faviconPreview} alt="" className="size-full object-contain p-2" /> : <Sparkles className="size-5" />}
                                         </span>
                                         <span className="min-w-0">
@@ -104,7 +104,7 @@ export default function SiteSettingsPage({ settings }: Props) {
 
                                 <div className="flex items-center justify-between gap-4 border-t border-[#edf3ef] pt-5">
                                     <p className="flex items-center gap-2 text-xs leading-5 text-[#8aa097]"><Lightbulb className="size-4 shrink-0 text-[#d79c26]" />Preview mengikuti input secara langsung.</p>
-                                    <Button type="submit" disabled={processing} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(45,139,96,0.2)] hover:bg-[#247850]">
+                                    <Button type="submit" disabled={processing} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white shadow-none hover:bg-[#247850]">
                                         <Save className="size-4" />
                                         {processing ? 'Menyimpan...' : 'Simpan perubahan'}
                                     </Button>
@@ -115,7 +115,7 @@ export default function SiteSettingsPage({ settings }: Props) {
                 </section>
 
                 <aside className="xl:pt-[82px]">
-                    <div className="sticky top-24 overflow-hidden rounded-[28px] border border-[#dcece2] bg-[#f2f9f4] shadow-[0_24px_70px_rgba(32,83,57,0.08)]">
+                    <div className="sticky top-24 overflow-hidden rounded-[28px] border border-[#e5eee8] bg-[#f2f9f4] shadow-none">
                         <div className="flex items-center justify-between border-b border-[#dcece2] bg-white/70 px-5 py-4">
                             <div>
                                 <p className="text-[10px] font-semibold tracking-[0.18em] text-[#5c8d70] uppercase">Live preview</p>
@@ -124,7 +124,7 @@ export default function SiteSettingsPage({ settings }: Props) {
                             <Sparkles className="size-4 text-[#3d9664]" />
                         </div>
                         <div className="p-5">
-                            <div className="overflow-hidden rounded-[22px] border border-[#e0ece4] bg-white shadow-sm">
+                            <div className="overflow-hidden rounded-[22px] border border-[#e8f0eb] bg-white shadow-none">
                                 <div className="flex items-center justify-between border-b border-[#edf3ef] px-4 py-3">
                                     <div className="flex items-center gap-2">
                                         <div className={'flex size-9 items-center justify-center overflow-hidden ' + (logoPreview ? 'rounded-none bg-transparent' : 'rounded-lg bg-[#2d875c] text-white')}>

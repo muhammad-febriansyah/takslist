@@ -295,7 +295,7 @@ function TaskCard({
                     onDrop(task.id);
                 }
             }}
-            className={`group cursor-grab rounded-2xl border border-l-4 p-5 shadow-[0_1px_2px_rgba(23,61,48,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(23,61,48,0.08)] active:cursor-grabbing ${taskStatusStyles[task.status]} ${isDragging ? 'scale-[0.98] opacity-45' : ''} ${isDragOver ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
+            className={`group cursor-grab rounded-2xl border border-l-4 p-5 shadow-none transition-colors active:cursor-grabbing ${taskStatusStyles[task.status]} ${isDragging ? 'scale-[0.98] opacity-45' : ''} ${isDragOver ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
         >
             <div className="flex items-start justify-between gap-4">
                 <input
@@ -1446,7 +1446,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 type="button"
                                 onClick={openOsticketPeriodDialog}
                                 hidden={!canManageTasks}
-                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#c8dced] bg-[#eef6fc] px-4 text-sm font-semibold text-[#3f79ad] shadow-sm transition hover:border-[#9ec4df] hover:bg-[#e2f0fa]"
+                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#c8dced] bg-[#eef6fc] px-4 text-sm font-semibold text-[#3f79ad] shadow-none transition hover:border-[#9ec4df] hover:bg-[#e2f0fa]"
                             >
                                 <Ticket className="size-4" />
                                 Ambil dari ticket
@@ -1454,7 +1454,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             <button
                                 type="button"
                                 onClick={openNewTimesheetSubmission}
-                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#cfe2d5] bg-white px-4 text-sm font-semibold text-[#236d49] shadow-sm transition hover:border-[#9fc9ad] hover:bg-[#f5fbf6]"
+                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#cfe2d5] bg-white px-4 text-sm font-semibold text-[#236d49] shadow-none transition hover:border-[#9fc9ad] hover:bg-[#f5fbf6]"
                             >
                                 <Download className="size-4" />
                                 Pengajuan timesheet
@@ -1463,7 +1463,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 type="button"
                                 onClick={openCreateDialog}
                                 hidden={!canManageTasks}
-                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2d875c] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#236d49]"
+                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2d875c] px-5 text-sm font-semibold text-white shadow-none transition hover:bg-[#236d49]"
                             >
                                 <Plus className="size-4" />
                                 Task baru
@@ -1481,14 +1481,14 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     <button
                                         type="button"
                                         onClick={() => setView('board')}
-                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'board' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'board' ? 'bg-white text-[#236d49]' : 'text-[#71877b]'}`}
                                     >
                                         <SquareKanban className="size-4" /> Board
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setView('list')}
-                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'list' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'list' ? 'bg-white text-[#236d49]' : 'text-[#71877b]'}`}
                                     >
                                         <List className="size-4" /> List
                                     </button>
@@ -1496,7 +1496,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                         <button
                                             type="button"
                                             onClick={() => setView('submissions')}
-                                            className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'submissions' ? 'bg-white text-[#236d49] shadow-sm' : 'text-[#71877b]'}`}
+                                            className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${view === 'submissions' ? 'bg-white text-[#236d49]' : 'text-[#71877b]'}`}
                                         >
                                             <ClipboardList className="size-4" /> Pengajuan
                                         </button>

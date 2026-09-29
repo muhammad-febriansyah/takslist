@@ -137,7 +137,7 @@ export default function Calendar({ month, events }: Props) {
                         <button
                             type="button"
                             onClick={() => openCreateDialog()}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2d875c] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#236d49]"
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2d875c] px-5 text-sm font-semibold text-white shadow-none transition hover:bg-[#236d49]"
                         >
                             <Plus className="size-4" />
                             Agenda baru
@@ -162,7 +162,7 @@ export default function Calendar({ month, events }: Props) {
                         <span>Pilih warna bebas saat membuat agenda.</span>
                     </div>
 
-                    <section className="overflow-hidden rounded-2xl border border-[#dfeae3] bg-white shadow-[0_1px_2px_rgba(23,61,48,0.03)]">
+                    <section className="overflow-hidden rounded-2xl border border-[#e8f0eb] bg-white shadow-none">
                         <div className="flex flex-col gap-4 border-b border-[#eaf1ec] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                             <div className="flex items-center gap-3">
                                 <div className="flex size-9 items-center justify-center rounded-lg bg-[#eaf6ee] text-[#2d875c]">
@@ -365,7 +365,7 @@ export default function Calendar({ month, events }: Props) {
                                                     onClick={() =>
                                                         setSelectedColor(color)
                                                     }
-                                                    className={`size-7 rounded-full border-2 border-white shadow-sm ring-1 ring-[#dfeae3] transition hover:scale-105 ${selectedColor === color ? 'ring-2 ring-[#173d30]' : ''}`}
+                                                    className={`size-7 rounded-full border-2 border-white shadow-none ring-1 ring-[#e7efe9] transition hover:scale-105 ${selectedColor === color ? 'ring-2 ring-[#173d30]' : ''}`}
                                                     style={{
                                                         backgroundColor: color,
                                                     }}

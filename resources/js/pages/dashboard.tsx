@@ -110,7 +110,7 @@ function StatCard({
     };
 
     return (
-        <div className="rounded-2xl border border-[#dfeae3] bg-white p-5 shadow-[0_8px_24px_rgba(33,84,62,0.04)]">
+        <div className="rounded-2xl border border-[#e8f0eb] bg-white p-5 shadow-none">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-xs font-medium text-[#71877b]">{label}</p>
@@ -185,11 +185,11 @@ export default function Dashboard({
                     </section>
 
                     <section className="grid gap-4 xl:grid-cols-[1.45fr_0.85fr]">
-                        <div className="rounded-2xl border border-[#dfeae3] bg-white p-5 shadow-[0_8px_24px_rgba(33,84,62,0.04)] sm:p-6">
+                        <div className="rounded-2xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-6">
                             <div className="flex items-start justify-between gap-4"><div><h2 className="text-base font-semibold text-[#173d30]">Progres 7 hari terakhir</h2><p className="mt-1 text-xs text-[#8aa097]">Jumlah task yang selesai setiap hari.</p></div><span className="rounded-full bg-[#eaf6ee] px-3 py-1 text-[11px] font-semibold text-[#2d875c]">Minggu ini</span></div>
                             <div className="mt-5"><Chart options={chartOptions} series={[{ name: 'Task selesai', data: weeklyCompleted }]} type="area" height={270} /></div>
                         </div>
-                        <div className="rounded-2xl border border-[#dfeae3] bg-white p-5 shadow-[0_8px_24px_rgba(33,84,62,0.04)] sm:p-6">
+                        <div className="rounded-2xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-6">
                             <div><h2 className="text-base font-semibold text-[#173d30]">Distribusi status</h2><p className="mt-1 text-xs text-[#8aa097]">Posisi task saat ini.</p></div>
                             <Chart options={donutOptions} series={[statusCounts.todo, statusCounts.in_progress, statusCounts.review, statusCounts.done]} type="donut" height={280} />
                         </div>
@@ -204,7 +204,7 @@ export default function Dashboard({
                         </DashboardList>
                     </section>
 
-                    <div className="rounded-2xl border border-[#dfeae3] bg-white p-5 shadow-[0_8px_24px_rgba(33,84,62,0.04)] sm:p-6">
+                    <div className="rounded-2xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-6">
                         <div className="flex items-center justify-between gap-4"><div><h2 className="text-base font-semibold text-[#173d30]">Aktivitas task terbaru</h2><p className="mt-1 text-xs text-[#8aa097]">Perubahan terakhir pada task milikmu.</p></div><Link href={tasksIndex()} className="text-xs font-semibold text-[#2d875c] hover:underline">Kelola task</Link></div>
                         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{recentTasks.length > 0 ? recentTasks.map((task) => <div key={task.id} className="rounded-xl border border-[#eef3ef] bg-[#fbfcfb] p-3"><span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusStyles[task.status]}`}>{statusLabels[task.status]}</span><p className="mt-3 line-clamp-2 text-xs leading-5 font-semibold text-[#173d30]">{task.title}</p><p className="mt-2 text-[10px] text-[#8aa097]">{formatRelativeDate(task.updated_at)}</p></div>) : <EmptyText text="Belum ada aktivitas task." />}</div>
                     </div>
@@ -215,7 +215,7 @@ export default function Dashboard({
 }
 
 function DashboardList({ title, subtitle, action, href, children }: { title: string; subtitle: string; action: string; href: DashboardLink; children: React.ReactNode }) {
-    return <div className="rounded-2xl border border-[#dfeae3] bg-white p-5 shadow-[0_8px_24px_rgba(33,84,62,0.04)] sm:p-6"><div className="flex items-center justify-between gap-4"><div><h2 className="text-base font-semibold text-[#173d30]">{title}</h2><p className="mt-1 text-xs text-[#8aa097]">{subtitle}</p></div><Link href={href} className="text-xs font-semibold text-[#2d875c] hover:underline">{action}</Link></div><div className="mt-4">{children}</div></div>;
+    return <div className="rounded-2xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-6"><div className="flex items-center justify-between gap-4"><div><h2 className="text-base font-semibold text-[#173d30]">{title}</h2><p className="mt-1 text-xs text-[#8aa097]">{subtitle}</p></div><Link href={href} className="text-xs font-semibold text-[#2d875c] hover:underline">{action}</Link></div><div className="mt-4">{children}</div></div>;
 }
 
 function EmptyText({ text }: { text: string }) {
