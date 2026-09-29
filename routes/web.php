@@ -4,8 +4,10 @@ use App\Http\Controllers\Admin\BulkDeleteUsersController;
 use App\Http\Controllers\Admin\MonitoringController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\BulkDeleteTasksController;
+use App\Http\Controllers\BulkUpdateTaskStatusController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OsticketTaskController;
 use App\Http\Controllers\TaskController;
@@ -19,6 +21,7 @@ Route::redirect('/', '/login')->name('home');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
+    Route::get('search', GlobalSearchController::class)->name('search');
     Route::get('admin', MonitoringController::class)->name('admin.monitoring');
     Route::get('admin/users', [UserController::class, 'index'])->name('admin.users.index');
     Route::post('admin/users', [UserController::class, 'store'])->name('admin.users.store');
@@ -32,6 +35,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::patch('tasks/reorder', TaskReorderController::class)->name('tasks.reorder');
     Route::delete('tasks/bulk', BulkDeleteTasksController::class)->name('tasks.bulk-destroy');
+    Route::patch('tasks/bulk-status', BulkUpdateTaskStatusController::class)->name('tasks.bulk-status');
     Route::resource('tasks', TaskController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('tasks/osticket/preview', [OsticketTaskController::class, 'preview'])->name('tasks.osticket.preview');
     Route::post('tasks/osticket/import', [OsticketTaskController::class, 'import'])->name('tasks.osticket.import');

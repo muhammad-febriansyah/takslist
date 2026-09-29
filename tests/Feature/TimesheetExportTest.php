@@ -172,6 +172,10 @@ it('uses the supervisor approval signature when a subordinate downloads a timesh
 
 it('marks weekend dates as red dates in the generated timesheet', function () use ($signatureData) {
     $owner = User::factory()->create();
+    Task::factory()->for($owner)->create([
+        'title' => 'Task akhir pekan',
+        'due_date' => '2026-09-05',
+    ]);
 
     $path = app(TimesheetExportService::class)->generate($owner, [
         'department' => 'Product',
@@ -186,12 +190,71 @@ it('marks weekend dates as red dates in the generated timesheet', function () us
     expect($zip->open($path))->toBeTrue();
 
     $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $styles = $zip->getFromName('xl/styles.xml');
     $zip->close();
     unlink($path);
 
+    $sheetDocument = new DOMDocument;
+    $sheetDocument->loadXML($sheet);
+    $sheetXPath = new DOMXPath($sheetDocument);
+    $sheetXPath->registerNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+    $stylesDocument = new DOMDocument;
+    $stylesDocument->loadXML($styles);
+    $stylesXPath = new DOMXPath($stylesDocument);
+    $stylesXPath->registerNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+    $cellXfs = $stylesXPath->query('//main:cellXfs/main:xf');
+    $fonts = $stylesXPath->query('//main:fonts/main:font');
+
+    foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G'] as $column) {
+        $cell = $sheetXPath->query('//main:c[@r="'.$column.'16"]')->item(0);
+        $style = $cellXfs->item((int) $cell->attributes?->getNamedItem('s')?->nodeValue);
+        $font = $fonts->item((int) $style->attributes?->getNamedItem('fontId')?->nodeValue);
+        $color = $stylesXPath->query('main:color', $font)->item(0);
+
+        expect($color?->attributes?->getNamedItem('rgb')?->nodeValue)->toBe('FFFF0000');
+    }
+
     expect($sheet)
-        ->not->toContain('TANGGAL MERAH')
-        ->toContain('s="55"');
+        ->toContain('<c r="A16"')
+        ->toContain('Task akhir pekan')
+        ->not->toContain('TANGGAL MERAH');
+});
+
+it('uses selected month and exports only an atasan own tasks', function () use ($signatureData) {
+    $atasan = User::factory()->atasan()->create(['name' => 'Atasan TaskFlow']);
+    $subordinate = User::factory()->state(['supervisor_id' => $atasan->id])->create();
+    Task::factory()->for($atasan)->create([
+        'title' => 'Task milik atasan',
+        'due_date' => '2026-02-01',
+    ]);
+    Task::factory()->for($subordinate)->create([
+        'title' => 'Task milik bawahan',
+        'due_date' => '2026-02-01',
+    ]);
+
+    $path = app(TimesheetExportService::class)->generate($atasan, [
+        'department' => 'Product',
+        'client' => 'SIM',
+        'approved_by' => 'Direktur',
+        'approved_role' => 'Direktur',
+        'period' => '2026-02',
+        'signature_data' => $signatureData,
+    ]);
+
+    $zip = new ZipArchive;
+    expect($zip->open($path))->toBeTrue();
+
+    $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $workbook = $zip->getFromName('xl/workbook.xml');
+    $zip->close();
+    unlink($path);
+
+    expect($workbook)
+        ->toContain('February 2026')
+        ->and($sheet)
+        ->toContain('<v>46054</v>')
+        ->toContain('Task milik atasan')
+        ->not->toContain('Task milik bawahan');
 });
 
 it('requires a department and period for export', function () {

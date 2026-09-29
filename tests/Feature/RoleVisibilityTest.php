@@ -59,7 +59,11 @@ it('lets admin inspect all tasks and filter by owner', function () {
 
 it('filters task list by month while keeping undated tasks available', function () {
     $admin = User::factory()->admin()->create();
-    $currentTask = Task::factory()->for($admin)->create(['due_date' => '2026-09-12', 'sort_order' => 1000]);
+    $currentTask = Task::factory()->for($admin)->create([
+        'due_date' => '2026-09-12',
+        'completed_at' => '2026-09-12 14:30:00',
+        'sort_order' => 1000,
+    ]);
     $oldTask = Task::factory()->for($admin)->create(['due_date' => '2020-01-12', 'sort_order' => 3000]);
     $undatedTask = Task::factory()->for($admin)->create(['due_date' => null, 'sort_order' => 2000]);
 
@@ -68,6 +72,7 @@ it('filters task list by month while keeping undated tasks available', function 
         ->assertInertia(fn ($page) => $page
             ->has('tasks', 2)
             ->where('tasks.0.id', $currentTask->id)
+            ->where('tasks.0.completed_at', '2026-09-12T14:30:00+07:00')
             ->where('tasks.1.id', $undatedTask->id)
             ->where('period', '2026-09'));
 

@@ -77,7 +77,7 @@ class TimesheetExportService
         try {
             $sheet = $this->loadXml($zip->getFromName('xl/worksheets/sheet1.xml'));
             $sheetXPath = $this->xpath($sheet);
-            $redDateStyle = $this->createRedDateStyle($zip, $sheetXPath);
+            $redRowStyles = $this->createRedRowStyles($zip, $sheetXPath);
 
             $this->setInlineString($sheet, $sheetXPath, 'C4', $user->name);
             $this->setInlineString($sheet, $sheetXPath, 'C5', $options['department']);
@@ -120,8 +120,8 @@ class TimesheetExportService
                     $this->clearCell($sheetXPath, 'D'.$row);
                     $this->clearCell($sheetXPath, 'E'.$row);
                     $this->clearCell($sheetXPath, 'F'.$row);
-                    $this->setCellStyle($sheetXPath, 'A'.$row, $redDateStyle);
                     $this->setInlineString($sheet, $sheetXPath, 'G'.$row, $description);
+                    $this->applyRedRowStyles($sheetXPath, $row, $redRowStyles);
                     $this->setDescriptionRowHeight($sheetXPath, $row, $description);
 
                     continue;
@@ -358,65 +358,98 @@ class TimesheetExportService
         $row->setAttribute('customHeight', '1');
     }
 
-    private function createRedDateStyle(ZipArchive $zip, DOMXPath $sheetXPath): int
+    /**
+     * @return array<int, int>
+     */
+    private function createRedRowStyles(ZipArchive $zip, DOMXPath $sheetXPath): array
     {
         $styles = $this->loadXml($zip->getFromName('xl/styles.xml'));
         $stylesXPath = $this->xpath($styles);
         $fonts = $stylesXPath->query('//main:fonts')->item(0);
         $cellXfs = $stylesXPath->query('//main:cellXfs')->item(0);
-        $dateCell = $this->cell($sheetXPath, 'A12');
-
         if (! $fonts instanceof DOMElement || ! $cellXfs instanceof DOMElement) {
             throw new RuntimeException('Struktur style template timesheet tidak valid.');
         }
 
-        $dateStyleIndex = (int) $dateCell->getAttribute('s');
         $cellXfNodes = $stylesXPath->query('//main:cellXfs/main:xf');
         $fontNodes = $stylesXPath->query('//main:fonts/main:font');
-        $dateStyle = $cellXfNodes->item($dateStyleIndex);
-        $fontCount = $fontNodes->length;
-        $styleCount = $cellXfNodes->length;
+        $baseStyleIndexes = [];
 
-        if (! $dateStyle instanceof DOMElement) {
-            throw new RuntimeException('Style tanggal template timesheet tidak ditemukan.');
-        }
-
-        $redFont = $fontNodes->item((int) $dateStyle->getAttribute('fontId'));
-
-        if (! $redFont instanceof DOMElement) {
-            throw new RuntimeException('Font tanggal template timesheet tidak ditemukan.');
-        }
-
-        $redFont = $redFont->cloneNode(true);
-        $fontColor = null;
-
-        foreach ($redFont->childNodes as $child) {
-            if ($child instanceof DOMElement && $child->localName === 'color') {
-                $fontColor = $child;
-                break;
+        for ($row = 12; $row <= 42; $row++) {
+            foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G'] as $column) {
+                $baseStyleIndexes[(int) $this->cell($sheetXPath, $column.$row)->getAttribute('s')] = true;
             }
         }
 
-        if (! $fontColor instanceof DOMElement) {
-            $fontColor = $styles->createElementNS(self::MAIN_NAMESPACE, 'color');
-            $redFont->appendChild($fontColor);
+        $redStyles = [];
+        $nextFontIndex = $fontNodes->length;
+        $nextStyleIndex = $cellXfNodes->length;
+        $redFontIndexes = [];
+
+        foreach (array_keys($baseStyleIndexes) as $baseStyleIndex) {
+            $baseStyle = $cellXfNodes->item($baseStyleIndex);
+
+            if (! $baseStyle instanceof DOMElement) {
+                throw new RuntimeException('Style timesheet tidak ditemukan.');
+            }
+
+            $baseFontIndex = (int) $baseStyle->getAttribute('fontId');
+
+            if (! isset($redFontIndexes[$baseFontIndex])) {
+                $baseFont = $fontNodes->item($baseFontIndex);
+
+                if (! $baseFont instanceof DOMElement) {
+                    throw new RuntimeException('Font timesheet tidak ditemukan.');
+                }
+
+                $redFont = $baseFont->cloneNode(true);
+                $fontColor = null;
+
+                foreach ($redFont->childNodes as $child) {
+                    if ($child instanceof DOMElement && $child->localName === 'color') {
+                        $fontColor = $child;
+                        break;
+                    }
+                }
+
+                if (! $fontColor instanceof DOMElement) {
+                    $fontColor = $styles->createElementNS(self::MAIN_NAMESPACE, 'color');
+                    $redFont->appendChild($fontColor);
+                }
+
+                $fontColor->removeAttribute('theme');
+                $fontColor->setAttribute('rgb', 'FFFF0000');
+                $fonts->appendChild($redFont);
+                $redFontIndexes[$baseFontIndex] = $nextFontIndex++;
+            }
+
+            $redStyle = $baseStyle->cloneNode(true);
+            $redStyle->setAttribute('fontId', (string) $redFontIndexes[$baseFontIndex]);
+            $redStyle->setAttribute('applyFont', '1');
+            $cellXfs->appendChild($redStyle);
+            $redStyles[$baseStyleIndex] = $nextStyleIndex++;
         }
 
-        $fontColor->removeAttribute('theme');
-        $fontColor->setAttribute('rgb', 'FFFF0000');
-        $fonts->appendChild($redFont);
-        $fontIndex = $fontCount;
-
-        $redStyle = $dateStyle->cloneNode(true);
-        $redStyle->setAttribute('fontId', (string) $fontIndex);
-        $redStyle->setAttribute('applyFont', '1');
-        $cellXfs->appendChild($redStyle);
-        $styleIndex = $styleCount;
-        $fonts->setAttribute('count', (string) ($fontCount + 1));
-        $cellXfs->setAttribute('count', (string) ($styleCount + 1));
+        $fonts->setAttribute('count', (string) $nextFontIndex);
+        $cellXfs->setAttribute('count', (string) $nextStyleIndex);
         $zip->addFromString('xl/styles.xml', $styles->saveXML());
 
-        return $styleIndex;
+        return $redStyles;
+    }
+
+    /**
+     * @param  array<int, int>  $redRowStyles
+     */
+    private function applyRedRowStyles(DOMXPath $xpath, int $rowNumber, array $redRowStyles): void
+    {
+        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G'] as $column) {
+            $cell = $this->cell($xpath, $column.$rowNumber);
+            $baseStyleIndex = (int) $cell->getAttribute('s');
+
+            if (isset($redRowStyles[$baseStyleIndex])) {
+                $this->setCellStyle($xpath, $column.$rowNumber, $redRowStyles[$baseStyleIndex]);
+            }
+        }
     }
 
     private function removeCalculationChain(ZipArchive $zip): void

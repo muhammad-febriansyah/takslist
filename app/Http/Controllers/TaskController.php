@@ -95,6 +95,7 @@ class TaskController extends Controller
                 'priority' => $task->priority,
                 'start_date' => $task->start_date?->toDateString(),
                 'due_date' => $task->due_date?->toDateString(),
+                'completed_at' => $task->completed_at?->toIso8601String(),
                 'project' => $task->project?->only(['name', 'color']),
                 'tags' => $task->tags->map(fn ($tag): array => $tag->only(['name', 'color']))->values(),
                 'subtasks' => [

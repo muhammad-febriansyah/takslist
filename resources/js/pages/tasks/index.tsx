@@ -12,6 +12,7 @@ import {
     CalendarDays,
     ClipboardList,
     Download,
+    Eye,
     Eraser,
     Flag,
     GripVertical,
@@ -59,6 +60,7 @@ import {
     update as updateTask,
     destroy as destroyTask,
     bulkDestroy as bulkDestroyTasks,
+    bulkStatus as bulkUpdateTaskStatus,
 } from '@/routes/tasks';
 import { timesheet as exportTimesheet } from '@/routes/tasks/export';
 import { store as storeTimesheetSubmission } from '@/routes/tasks/timesheet-submissions';
@@ -76,6 +78,7 @@ type Task = {
     priority: 'low' | 'medium' | 'high';
     start_date: string | null;
     due_date: string | null;
+    completed_at: string | null;
     project: { name: string; color: string | null } | null;
     tags: Array<{ name: string; color: string | null }>;
     subtasks: { total: number; completed: number };
@@ -202,6 +205,18 @@ function formatDate(date: string | null): string {
     }).format(new Date(`${date}T00:00:00`));
 }
 
+function formatTime(dateTime: string | null): string {
+    if (!dateTime) {
+        return '';
+    }
+
+    return new Intl.DateTimeFormat('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(new Date(dateTime));
+}
+
 function getTodayValue(): string {
     const today = new Date();
 
@@ -279,33 +294,26 @@ function TaskCard({
                     onDrop(task.id);
                 }
             }}
-            className={`group cursor-grab rounded-xl border border-l-4 p-4 shadow-[0_1px_2px_rgba(23,61,48,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(23,61,48,0.08)] active:cursor-grabbing ${taskStatusStyles[task.status]} ${isDragging ? 'scale-[0.98] opacity-45' : ''} ${isDragOver ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
+            className={`group cursor-grab rounded-2xl border border-l-4 p-5 shadow-[0_1px_2px_rgba(23,61,48,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(23,61,48,0.08)] active:cursor-grabbing ${taskStatusStyles[task.status]} ${isDragging ? 'scale-[0.98] opacity-45' : ''} ${isDragOver ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
         >
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2">
-                    <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => onToggleSelect(task.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        aria-label={`Pilih ${task.title}`}
-                        disabled={!canEdit}
-                        className="mt-0.5 size-4 shrink-0 accent-[#2d875c]"
-                    />
-                    <div className="min-w-0 flex-1">
-                        <h3 className="text-sm leading-5 font-semibold text-[#173d30]">
-                            {task.title}
-                        </h3>
-                    </div>
-                </div>
-                <div hidden={!canEdit} className="flex shrink-0 items-center gap-1 opacity-70 transition group-hover:opacity-100">
+            <div className="flex items-start justify-between gap-4">
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onToggleSelect(task.id)}
+                    onClick={(event) => event.stopPropagation()}
+                    aria-label={`Pilih ${task.title}`}
+                    disabled={!canEdit}
+                    className="mt-0.5 size-4 shrink-0 accent-[#2d875c]"
+                />
+                <div hidden={!canEdit} className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 opacity-70 transition group-hover:opacity-100">
                     <button
                         type="button"
                         onClick={(event) => {
                             event.stopPropagation();
                             onEdit(task);
                         }}
-                        className="inline-flex h-7 items-center gap-1 rounded-md bg-[#eaf4fb] px-2 text-[10px] font-semibold text-[#3f79ad] hover:bg-[#dcecf9]"
+                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#eaf4fb] px-2.5 text-[11px] font-semibold text-[#3f79ad] hover:bg-[#dcecf9]"
                         aria-label={`Edit ${task.title}`}
                     >
                         <Pencil className="size-3" /> Edit
@@ -316,36 +324,39 @@ function TaskCard({
                             event.stopPropagation();
                             onDelete(task);
                         }}
-                        className="inline-flex h-7 items-center gap-1 rounded-md bg-[#fff0f0] px-2 text-[10px] font-semibold text-[#c45c5c] hover:bg-[#ffe1e1]"
+                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#fff0f0] px-2.5 text-[11px] font-semibold text-[#c45c5c] hover:bg-[#ffe1e1]"
                         aria-label={`Hapus ${task.title}`}
                     >
                         <Trash2 className="size-3" /> Hapus
                     </button>
                 </div>
             </div>
-            {description && (
-                <div className="mt-3 rounded-lg border border-[#eef3ef] bg-white/60 px-3 py-2.5">
-                    <p className="whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
+            <div className="mt-4 rounded-xl border border-[#eef3ef] bg-white/60 px-4 py-3">
+                <h3 className="break-words text-[15px] leading-6 font-bold text-[#173d30]">
+                    {task.title}
+                </h3>
+                {description && (
+                    <p className="mt-3 whitespace-pre-line break-words text-sm leading-7 text-[#557067]">
                         {description}
                     </p>
-                </div>
-            )}
-            <div className="mt-3 flex flex-wrap gap-1.5">
+                )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
                 {task.project && (
-                    <span className="rounded-md bg-[#edf8f1] px-2 py-1 text-[11px] font-medium text-[#367554]">
+                    <span className="rounded-lg bg-[#edf8f1] px-2.5 py-1.5 text-[11px] font-medium text-[#367554]">
                         {task.project.name}
                     </span>
                 )}
                 {task.tags.map((tag) => (
                     <span
                         key={tag.name}
-                        className="rounded-md bg-[#f3f8f5] px-2 py-1 text-[11px] font-medium text-[#71877b]"
+                        className="rounded-lg bg-[#f3f8f5] px-2.5 py-1.5 text-[11px] font-medium text-[#71877b]"
                     >
                         {tag.name}
                     </span>
                 ))}
             </div>
-            <div className="mt-4 flex items-center justify-between gap-2 border-t border-[#eef3ef] pt-3 text-xs text-[#71877b]">
+            <div className="mt-5 flex items-center justify-between gap-4 border-t border-[#eef3ef] pt-4 text-xs text-[#71877b]">
                 <span
                     className={`inline-flex items-center gap-1 font-medium ${priority.color}`}
                 >
@@ -358,7 +369,7 @@ function TaskCard({
                 </span>
             </div>
             {progress && (
-                <div className="mt-3 flex items-center gap-2 text-[11px] text-[#71877b]">
+                <div className="mt-4 flex items-center gap-3 text-[11px] text-[#71877b]">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eaf1ec]">
                         <div
                             className="h-full rounded-full bg-[#5bab7b]"
@@ -397,6 +408,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [statusTasksPage, setStatusTasksPage] = useState(1);
     const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [bulkStatus, setBulkStatus] = useState<Task['status']>('done');
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isDuplicateSubmissionDialogOpen, setIsDuplicateSubmissionDialogOpen] = useState(false);
@@ -626,8 +639,16 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         taskColumnHelper.accessor('due_date', {
             header: 'Tanggal',
             cell: ({ row }) => (
-                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-[#71877b]">
-                    <CalendarDays className="size-3.5" /> {formatDate(row.original.due_date)}
+                <span className="inline-flex items-start gap-1 text-xs text-[#71877b]">
+                    <CalendarDays className="mt-0.5 size-3.5 shrink-0" />
+                    <span className="whitespace-nowrap">
+                        <span className="block">{formatDate(row.original.due_date)}</span>
+                        {row.original.completed_at && (
+                            <span className="mt-1 block text-[11px] text-[#9aac9f]">
+                                Selesai {formatTime(row.original.completed_at)}
+                            </span>
+                        )}
+                    </span>
                 </span>
             ),
         }),
@@ -1068,7 +1089,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
 
     function toggleVisibleTasks(): void {
         const visibleIds = filteredTasks.filter((task) => task.can_edit).map((task) => task.id);
-        const allVisibleSelected = visibleIds.every((id) =>
+        const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) =>
             selectedTaskIds.includes(id),
         );
 
@@ -1076,6 +1097,21 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             allVisibleSelected
                 ? selectedIds.filter((id) => !visibleIds.includes(id))
                 : Array.from(new Set([...selectedIds, ...visibleIds])),
+        );
+    }
+
+    function toggleColumnTasks(status: Task['status']): void {
+        const columnIds = filteredTasks
+            .filter((task) => task.status === status && task.can_edit)
+            .map((task) => task.id);
+        const allColumnSelected = columnIds.length > 0 && columnIds.every((id) =>
+            selectedTaskIds.includes(id),
+        );
+
+        setSelectedTaskIds((selectedIds) =>
+            allColumnSelected
+                ? selectedIds.filter((id) => !columnIds.includes(id))
+                : Array.from(new Set([...selectedIds, ...columnIds])),
         );
     }
 
@@ -1113,6 +1149,23 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             },
             onError: () => toast.error('Task gagal dihapus.'),
             onFinish: () => setIsDeleting(false),
+        });
+    }
+
+    function updateSelectedTasksStatus(status: Task['status']): void {
+        if (selectedTaskIds.length === 0) {
+            return;
+        }
+
+        setIsUpdatingStatus(true);
+        router.patch(bulkUpdateTaskStatus().url, {
+            task_ids: selectedTaskIds,
+            status,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => setSelectedTaskIds([]),
+            onError: (errors) => toast.error(errors.task_ids ?? errors.status ?? 'Status task gagal diperbarui.'),
+            onFinish: () => setIsUpdatingStatus(false),
         });
     }
 
@@ -1524,21 +1577,42 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     onClick={toggleVisibleTasks}
                                     className="text-xs font-semibold text-[#236d49] hover:underline"
                                 >
-                                    {filteredTasks.every((task) =>
+                                    {filteredTasks.filter((task) => task.can_edit).length > 0
+                                    && filteredTasks.filter((task) => task.can_edit).every((task) =>
                                         selectedTaskIds.includes(task.id),
                                     )
                                         ? 'Batalkan pilih semua'
-                                        : 'Pilih semua yang terlihat'}
+                                        : 'Pilih semua task yang terlihat'}
                                 </button>
                                 {selectedTaskIds.length > 0 && (
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex flex-wrap items-center justify-end gap-2.5">
                                         <span className="text-xs text-[#71877b]">
                                             {selectedTaskIds.length} task dipilih
                                         </span>
+                                        <select
+                                            value={bulkStatus}
+                                            onChange={(event) => setBulkStatus(event.target.value as Task['status'])}
+                                            disabled={isDeleting || isUpdatingStatus}
+                                            aria-label="Status baru untuk task terpilih"
+                                            className="h-8 rounded-lg border border-[#dfeae3] bg-white px-2 text-xs font-semibold text-[#557067] outline-none focus:border-[#7cba95]"
+                                        >
+                                            {columns.map((column) => (
+                                                <option key={column.key} value={column.key}>Pindah ke {column.label}</option>
+                                            ))}
+                                        </select>
+                                        <Button
+                                            type="button"
+                                            onClick={() => updateSelectedTasksStatus(bulkStatus)}
+                                            disabled={isDeleting || isUpdatingStatus}
+                                            className="h-8 rounded-lg bg-[#2d875c] px-3 text-xs font-semibold text-white hover:bg-[#236d49]"
+                                        >
+                                            {isUpdatingStatus ? 'Menyimpan...' : 'Terapkan'}
+                                        </Button>
                                         <button
                                             type="button"
                                             onClick={() => setIsBulkDeleteOpen(true)}
-                                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#fff2f2] px-3 text-xs font-semibold text-[#d44f4f] transition hover:bg-[#ffe4e4]"
+                                            disabled={isDeleting || isUpdatingStatus}
+                                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#fff2f2] px-3 text-xs font-semibold text-[#d44f4f] transition hover:bg-[#ffe4e4] disabled:opacity-50"
                                         >
                                             <Trash2 className="size-3.5" />
                                             Hapus pilihan
@@ -1561,7 +1635,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     Tarik task ke kolom lain untuk mengubah status.
                                 </p>
                                 <div className="overflow-x-auto pb-2">
-                                    <div className="grid min-w-[920px] grid-cols-4 gap-3">
+                                    <div className="grid min-w-[1120px] grid-cols-4 gap-4">
                                     {columns.map((column) => {
                                     const columnTasks = filteredTasks.filter(
                                         (task) => task.status === column.key,
@@ -1575,10 +1649,20 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                 setDragOverColumn(column.key);
                                             }}
                                             onDrop={() => handleDrop(column.key)}
-                                            className={`flex ${isTasksFullscreen ? 'h-[calc(100svh-235px)]' : 'h-[clamp(360px,calc(100vh-390px),720px)]'} min-h-0 flex-col overflow-hidden rounded-2xl p-3 transition ${column.tone} ${dragOverColumn === column.key ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
+                                            className={`flex ${isTasksFullscreen ? 'h-[calc(100svh-235px)]' : 'h-[clamp(360px,calc(100vh-390px),720px)]'} min-h-0 flex-col overflow-hidden rounded-2xl p-4 transition ${column.tone} ${dragOverColumn === column.key ? 'ring-2 ring-[#2d875c] ring-offset-2' : ''}`}
                                         >
-                                            <div className="mb-3 flex shrink-0 items-center justify-between px-1">
+                                            <div className="mb-4 flex shrink-0 items-center justify-between px-1">
                                                 <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={columnTasks.some((task) => task.can_edit)
+                                                            && columnTasks.filter((task) => task.can_edit).every((task) => selectedTaskIds.includes(task.id))}
+                                                        onChange={() => toggleColumnTasks(column.key)}
+                                                        disabled={!columnTasks.some((task) => task.can_edit)}
+                                                        aria-label={`Pilih semua task ${column.label}`}
+                                                        title={`Pilih semua task ${column.label}`}
+                                                        className="size-4 accent-[#2d875c]"
+                                                    />
                                                     <span
                                                         className={`size-2.5 rounded-full ${column.dot}`}
                                                     />
@@ -1611,7 +1695,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
-                                            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
+                                            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
                                                 {columnTasks.map((task) => (
                                                     <TaskCard
                                                         key={task.id}
