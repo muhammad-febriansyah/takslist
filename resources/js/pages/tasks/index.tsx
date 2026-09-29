@@ -74,6 +74,7 @@ type Task = {
     can_edit: boolean;
     can_submit_review: boolean;
     description: string | null;
+    external_ticket_number: string | null;
     status: 'todo' | 'in_progress' | 'review' | 'done';
     priority: 'low' | 'medium' | 'high';
     start_date: string | null;
@@ -627,6 +628,16 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 <p className="max-w-[520px] whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
                     {taskDescriptionPreview(row.original.description) ?? 'Tanpa deskripsi'}
                 </p>
+            ),
+        }),
+        taskColumnHelper.accessor('external_ticket_number', {
+            header: 'No. tiket',
+            cell: ({ row }) => row.original.external_ticket_number ? (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-[#3f79ad]">
+                    <Ticket className="size-3.5" /> #{row.original.external_ticket_number}
+                </span>
+            ) : (
+                <span className="text-xs text-[#9aac9f]">—</span>
             ),
         }),
         taskColumnHelper.accessor('priority', {

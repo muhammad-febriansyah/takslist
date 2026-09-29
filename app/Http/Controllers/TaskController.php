@@ -91,6 +91,7 @@ class TaskController extends Controller
                     && $task->status === 'done'
                     && ($task->latestReview === null || $task->latestReview->status === 'rejected'),
                 'description' => $task->description,
+                'external_ticket_number' => $task->external_ticket_number,
                 'status' => $task->status,
                 'priority' => $task->priority,
                 'start_date' => $task->start_date?->toDateString(),

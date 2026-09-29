@@ -82,7 +82,10 @@ it('exposes review status and supervisor on the task list', function () {
         'role' => 'bawahan',
         'supervisor_id' => $supervisor->id,
     ])->create();
-    $task = Task::factory()->for($subordinate)->create(['status' => 'review']);
+    $task = Task::factory()->for($subordinate)->create([
+        'status' => 'review',
+        'external_ticket_number' => '608930',
+    ]);
 
     TaskReview::factory()->create([
         'task_id' => $task->id,
@@ -96,6 +99,7 @@ it('exposes review status and supervisor on the task list', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('tasks/index')
             ->where('tasks.0.supervisor.name', $supervisor->name)
+            ->where('tasks.0.external_ticket_number', '608930')
             ->where('tasks.0.review.status', 'pending')
             ->where('tasks.0.review.reviewer.name', $supervisor->name)
             ->where('export_approver.name', $supervisor->name)
