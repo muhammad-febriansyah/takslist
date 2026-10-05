@@ -160,8 +160,8 @@ class TimesheetExportService
                 $options['supervisor_signature_data'] ?? null,
             );
 
-            $zip->addFromString('xl/worksheets/sheet1.xml', $sheet->saveXML());
-            $zip->addFromString('xl/workbook.xml', $workbook->saveXML());
+            $this->replaceZipEntry($zip, 'xl/worksheets/sheet1.xml', $sheet->saveXML());
+            $this->replaceZipEntry($zip, 'xl/workbook.xml', $workbook->saveXML());
         } catch (\Throwable $exception) {
             $zip->close();
             @unlink($outputPath);
@@ -433,7 +433,7 @@ class TimesheetExportService
 
         $fonts->setAttribute('count', (string) $nextFontIndex);
         $cellXfs->setAttribute('count', (string) $nextStyleIndex);
-        $zip->addFromString('xl/styles.xml', $styles->saveXML());
+        $this->replaceZipEntry($zip, 'xl/styles.xml', $styles->saveXML());
 
         return $redStyles;
     }
@@ -472,8 +472,8 @@ class TimesheetExportService
         }
 
         $zip->deleteName('xl/calcChain.xml');
-        $zip->addFromString('xl/_rels/workbook.xml.rels', $workbookRelationships->saveXML());
-        $zip->addFromString('[Content_Types].xml', $contentTypes->saveXML());
+        $this->replaceZipEntry($zip, 'xl/_rels/workbook.xml.rels', $workbookRelationships->saveXML());
+        $this->replaceZipEntry($zip, '[Content_Types].xml', $contentTypes->saveXML());
     }
 
     private function cell(DOMXPath $xpath, string $reference): DOMElement
@@ -630,10 +630,16 @@ XML;
             $contentRoot->appendChild($drawingType);
         }
 
-        $zip->addFromString('xl/drawings/drawing1.xml', $drawing->saveXML());
-        $zip->addFromString('xl/drawings/_rels/drawing1.xml.rels', $drawingRelationships);
-        $zip->addFromString('xl/worksheets/_rels/sheet1.xml.rels', $sheetRelationships);
-        $zip->addFromString('[Content_Types].xml', $contentTypes->saveXML());
+        $this->replaceZipEntry($zip, 'xl/drawings/drawing1.xml', $drawing->saveXML());
+        $this->replaceZipEntry($zip, 'xl/drawings/_rels/drawing1.xml.rels', $drawingRelationships);
+        $this->replaceZipEntry($zip, 'xl/worksheets/_rels/sheet1.xml.rels', $sheetRelationships);
+        $this->replaceZipEntry($zip, '[Content_Types].xml', $contentTypes->saveXML());
+    }
+
+    private function replaceZipEntry(ZipArchive $zip, string $name, string $contents): void
+    {
+        $zip->deleteName($name);
+        $zip->addFromString($name, $contents);
     }
 
     private function signatureImage(string $dataUri): string
