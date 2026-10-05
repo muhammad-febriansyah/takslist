@@ -21,6 +21,7 @@ class BulkDeleteTasksController extends Controller
         $taskIds = collect($request->validated('task_ids'))
             ->map(fn (int|string $id): int => (int) $id)
             ->unique()
+            ->sort()
             ->values();
         $ownedTaskIds = Task::ownedBy($user)
             ->whereIn('id', $taskIds)

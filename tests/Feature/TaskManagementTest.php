@@ -50,7 +50,7 @@ it('bulk deletes only tasks owned by authenticated user', function () {
 
     $this->actingAs($owner)
         ->delete(route('tasks.bulk-destroy'), [
-            'task_ids' => [$firstTask->id, $secondTask->id],
+            'task_ids' => [$secondTask->id, $firstTask->id],
         ])
         ->assertRedirect();
 
@@ -84,7 +84,7 @@ it('bulk updates status and completion time only for owned tasks', function () {
 
     $this->actingAs($owner)
         ->patch(route('tasks.bulk-status'), [
-            'task_ids' => [$firstTask->id, $secondTask->id],
+            'task_ids' => [$secondTask->id, $firstTask->id],
             'status' => 'done',
         ])
         ->assertRedirect();
