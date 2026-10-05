@@ -19,6 +19,12 @@ it('exports private task descriptions into the timesheet template', function () 
         'external_ticket_number' => '608930',
         'due_date' => '2026-09-03',
     ]);
+    Task::factory()->for($owner)->create([
+        'title' => 'Kirim hasil review',
+        'description' => 'Kirim hasil review ke atasan.',
+        'external_ticket_number' => '608931',
+        'due_date' => '2026-09-03',
+    ]);
     Task::factory()->for($otherUser)->create([
         'title' => 'Data milik user lain',
         'due_date' => '2026-09-03',
@@ -50,9 +56,11 @@ it('exports private task descriptions into the timesheet template', function () 
         ->toContain('Web Development')
         ->toContain('Agus Ardianto')
         ->toContain('Dept Head IT Apps')
-        ->toContain('• No tiket: #608930')
-        ->toContain('Title: Review laporan mingguan')
-        ->toContain('Deskripsi: Perbaiki ringkasan laporan.')
+        ->toContain('1. ')
+        ->toContain('No tiket: #608930')
+        ->toContain('Detail: Perbaiki ringkasan laporan.')
+        ->toContain('2. ')
+        ->toContain('No tiket: #608931')
         ->not->toContain('Data milik user lain')
         ->not->toContain('TANGGAL MERAH')
         ->and($workbook)->toContain('September 2026')

@@ -110,7 +110,8 @@ class TimesheetExportService
                 );
                 $dayTasks = $tasksByDate->get($date->format('Y-m-d'), collect());
                 $description = $dayTasks
-                    ->map(fn (Task $task): string => $this->formatTaskDescription($task))
+                    ->values()
+                    ->map(fn (Task $task, int $index): string => $this->formatTaskDescription($task, $index + 1))
                     ->implode("\n\n");
 
                 $this->setCellNumber($sheet, $sheetXPath, 'A'.$row, $this->excelDateSerial($date));
@@ -319,18 +320,18 @@ class TimesheetExportService
         return $xpath;
     }
 
-    private function formatTaskDescription(Task $task): string
+    private function formatTaskDescription(Task $task, int $number): string
     {
         $description = trim((string) ($task->description ?? ''));
 
-        if (preg_match('/(?:^|\R)Deskripsi:\s*(?<description>.*)\z/su', $description, $matches) === 1) {
+        if (preg_match('/(?:^|\R)Detail:\s*(?<description>.*?)(?:\R\R?Sumber osTicket:|\z)/su', $description, $matches) === 1) {
             $description = trim($matches['description']);
         }
 
         return implode("\n", [
-            '• No tiket: '.($task->external_ticket_number ? '#'.$task->external_ticket_number : '-'),
-            '  Title: '.$task->title,
-            '  Deskripsi: '.($description !== '' ? $description : '-'),
+            $number.'. '.$task->title,
+            '   No tiket: '.($task->external_ticket_number ? '#'.$task->external_ticket_number : '-'),
+            '   Detail: '.($description !== '' ? $description : '-'),
         ]);
     }
 

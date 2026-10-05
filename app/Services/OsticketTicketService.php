@@ -46,20 +46,77 @@ class OsticketTicketService
     /**
      * @param  array<string, mixed>  $ticket
      */
+    public function titleFor(array $ticket): string
+    {
+        $description = trim((string) ($ticket['description'] ?? ''));
+        $description = preg_replace('/^dear\s+tim[,\s]*/iu', '', $description) ?? $description;
+        $description = preg_replace('/^halo[,\s]*/iu', '', $description) ?? $description;
+
+        if (preg_match('/\b(?<verb>buatkan|buat|kerjakan|perbaiki|cek|periksa|update|perbarui|buat)\s+(?<detail>.+?)(?:\s*:\s*https?:\/\/|$)/iu', $description, $matches) === 1) {
+            $verbs = [
+                'buatkan' => 'Buat',
+                'buat' => 'Buat',
+                'kerjakan' => 'Kerjakan',
+                'perbaiki' => 'Perbaiki',
+                'cek' => 'Cek',
+                'periksa' => 'Periksa',
+                'update' => 'Perbarui',
+                'perbarui' => 'Perbarui',
+            ];
+            $detail = trim((string) $matches['detail'], " \t\n\r\0\x0B.,;:-");
+
+            return trim(($verbs[Str::lower($matches['verb'])] ?? ucfirst($matches['verb'])).' '.$detail);
+        }
+
+        $subject = trim((string) ($ticket['subject'] ?? ''));
+
+        return $subject !== '' ? $subject : 'Ticket #'.($ticket['ticket_number'] ?? $ticket['ticket_id']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $ticket
+     */
     public function descriptionFor(array $ticket): string
     {
         $description = trim((string) ($ticket['description'] ?? ''));
         $description = $description !== '' ? $description : 'Tidak ada deskripsi ticket.';
+        $ticketNumber = $ticket['ticket_number'] ?? $ticket['ticket_id'];
+        $title = rtrim($this->titleFor($ticket), '.').'.';
+        $links = [];
 
-        return implode("\n", [
-            '[Ticket osTicket #'.($ticket['ticket_number'] ?? $ticket['ticket_id']).']',
-            '',
-            'Status: '.($ticket['status_label'] ?? $ticket['status'] ?? 'Tidak diketahui'),
-            'Assign To: '.($ticket['assigned_to'] ?: 'Belum ditugaskan'),
-            '',
-            'Deskripsi:',
-            $description,
-        ]);
+        if (preg_match_all('/https?:\/\/\S+/iu', $description, $matches) > 0) {
+            $links = array_map(
+                static fn (string $link): string => rtrim($link, '.,);]'),
+                $matches[0],
+            );
+        }
+
+        $descriptionWithoutLinks = trim((string) preg_replace('/\s*https?:\/\/\S+/iu', '', $description));
+        $descriptionWithoutLinks = preg_replace('/^(?:dear\s+tim|halo)[,\s]*/iu', '', $descriptionWithoutLinks) ?? $descriptionWithoutLinks;
+        $descriptionWithoutLinks = trim($descriptionWithoutLinks, " \t\n\r\0\x0B.,;:-");
+        $detail = $descriptionWithoutLinks !== ''
+            && ! preg_match('/\b(?:mohon|tolong)\s+(?:bantu\s+)?(?:buatkan|buat|kerjakan|perbaiki|cek|periksa|update|perbarui)\b/iu', $descriptionWithoutLinks)
+            && ! str_contains(Str::lower($descriptionWithoutLinks), Str::lower($this->titleFor($ticket)))
+            ? $descriptionWithoutLinks
+            : null;
+
+        $lines = [$title];
+
+        if ($detail !== null) {
+            $lines[] = '';
+            $lines[] = $detail.'.';
+        }
+
+        foreach ($links as $link) {
+            $lines[] = '';
+            $lines[] = str_contains(Str::lower($link), 'metabase') ? 'Link Metabase:' : 'Link:';
+            $lines[] = $link;
+        }
+
+        $lines[] = '';
+        $lines[] = 'Sumber: osTicket #'.$ticketNumber;
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -203,6 +260,12 @@ class OsticketTicketService
                 'subject' => (string) ($ticket->subject ?: ''),
                 'description' => $this->cleanDescription($ticket->custom_description ?: ($ticket->description ?? null)),
                 'assigned_to' => (string) ($ticket->assigned_to ?: ''),
+                'natural_title' => $this->titleFor([
+                    'subject' => (string) ($ticket->subject ?: ''),
+                    'description' => $this->cleanDescription($ticket->custom_description ?: ($ticket->description ?? null)),
+                    'ticket_number' => (string) $ticket->ticket_number,
+                    'ticket_id' => (int) $ticket->ticket_id,
+                ]),
             ];
         }
 
@@ -248,6 +311,7 @@ class OsticketTicketService
                 $normalisedTicket = $this->stringKeyedArray($ticket);
                 $normalisedTicket['status'] = Str::lower((string) ($normalisedTicket['status'] ?? ''));
                 $normalisedTicket['description'] = $this->cleanDescription($normalisedTicket['description'] ?? null);
+                $normalisedTicket['natural_title'] = $this->titleFor($normalisedTicket);
                 $tickets[] = $normalisedTicket;
             }
         }

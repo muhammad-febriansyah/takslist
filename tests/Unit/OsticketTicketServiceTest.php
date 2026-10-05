@@ -11,7 +11,17 @@ it('maps osTicket status to task status', function (string $ticketStatus, string
     ['pending', 'review'],
 ]);
 
-it('combines ticket metadata and description into task description', function (): void {
+it('creates a natural task title from ticket instructions', function (): void {
+    $service = new OsticketTicketService;
+
+    expect($service->titleFor([
+        'ticket_number' => '608930',
+        'subject' => 'Support / Reporting BPR',
+        'description' => 'dear tim, mohon bantu buatkan report dengan nama Fulfillment AKARI: https://metabase.example/report',
+    ]))->toBe('Buat report dengan nama Fulfillment AKARI');
+});
+
+it('keeps ticket metadata and description in natural task description', function (): void {
     $description = (new OsticketTicketService)->descriptionFor([
         'ticket_id' => 1047,
         'ticket_number' => '608930',
@@ -22,8 +32,20 @@ it('combines ticket metadata and description into task description', function ()
     ]);
 
     expect($description)
-        ->toContain('[Ticket osTicket #608930]')
-        ->toContain('Status: Closed')
-        ->toContain('Assign To: Muhamad Febriansyah')
-        ->toContain('Perbaiki koneksi Gallery SIM.');
+        ->toContain('Perbaiki koneksi Gallery SIM.')
+        ->toContain('Sumber: osTicket #608930');
+});
+
+it('formats ticket links as natural task details', function (): void {
+    $description = (new OsticketTicketService)->descriptionFor([
+        'ticket_number' => '12345',
+        'subject' => 'Support / Reporting BPR',
+        'description' => 'dear tim, mohon bantu buatkan report dengan nama Fulfillment AKARI: https://metabase.example/report',
+    ]);
+
+    expect($description)
+        ->toContain('Buat report dengan nama Fulfillment AKARI.')
+        ->toContain("Link Metabase:\nhttps://metabase.example/report")
+        ->toContain('Sumber: osTicket #12345')
+        ->not->toContain('dear tim');
 });

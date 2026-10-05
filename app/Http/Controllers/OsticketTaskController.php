@@ -81,7 +81,7 @@ class OsticketTaskController extends Controller
             foreach ($tickets as $ticket) {
                 Task::query()->create([
                     'user_id' => $user->id,
-                    'title' => $ticket['subject'] ?: 'Ticket #'.$ticket['ticket_number'],
+                    'title' => $this->tickets->titleFor($ticket),
                     'description' => $this->tickets->descriptionFor($ticket),
                     'status' => $this->tickets->taskStatusFor($ticket),
                     'priority' => 'medium',

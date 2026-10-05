@@ -133,6 +133,7 @@ type OsticketTicket = {
     status: string;
     status_label: string;
     subject: string;
+    natural_title: string;
     description: string;
     assigned_to: string;
 };
@@ -1141,7 +1142,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     selectedIds.filter((id) => id !== deletingTask.id),
                 );
             },
-            onError: () => toast.error('Task gagal dihapus.'),
+            onError: (errors) => toast.error(errors.task_ids ?? errors.message ?? 'Task gagal dihapus.'),
             onFinish: () => setIsDeleting(false),
         });
     }
@@ -1159,7 +1160,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 setSelectedTaskIds([]);
                 setIsBulkDeleteOpen(false);
             },
-            onError: () => toast.error('Task gagal dihapus.'),
+            onError: (errors) => toast.error(errors.task_ids ?? errors.message ?? 'Task gagal dihapus.'),
             onFinish: () => setIsDeleting(false),
         });
     }
@@ -2010,7 +2011,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                         <span className="text-sm font-semibold text-[#173d30]">#{ticket.ticket_number}</span>
                                                         <span className="rounded-full bg-[#eef6fc] px-2 py-0.5 text-[11px] font-semibold text-[#3f79ad]">{ticket.status_label}</span>
                                                     </span>
-                                                    <span className="mt-1 block text-sm text-[#557067]">{ticket.subject || 'Tanpa subject'}</span>
+                                                    <span className="mt-1 block text-sm font-medium text-[#315847]">{ticket.natural_title || ticket.subject || 'Tanpa subject'}</span>
+                                                    {ticket.subject && ticket.subject !== ticket.natural_title && <span className="mt-1 block text-xs text-[#8aa097]">Subject osTicket: {ticket.subject}</span>}
                                                     <span className="mt-1 block line-clamp-2 text-xs leading-5 text-[#71877b]">{ticket.description || 'Tidak ada deskripsi ticket.'}</span>
                                                     <span className="mt-2 block text-xs text-[#9aac9f]">Assign To: {ticket.assigned_to || 'Belum ditugaskan'} · {formatDate(ticket.created_at.slice(0, 10))}</span>
                                                 </span>
