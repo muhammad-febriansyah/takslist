@@ -49,3 +49,15 @@ it('formats ticket links as natural task details', function (): void {
         ->toContain('Sumber: osTicket #12345')
         ->not->toContain('dear tim');
 });
+
+it('does not include following ticket items or links in task title', function (): void {
+    $title = (new OsticketTicketService)->titleFor([
+        'subject' => 'Support / Reporting BPR',
+        'description' => 'Buat menu pada aplikasi reporting nya terimakasih ....1. Report Proyeksi Perubahan Entitas TADhttps://metabase.example/report',
+    ]);
+
+    expect($title)
+        ->toBe('Buat menu pada aplikasi reporting nya terimakasih')
+        ->not->toContain('https://')
+        ->not->toContain('1. Report');
+});

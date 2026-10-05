@@ -25,7 +25,7 @@ class UpdateTaskRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['sometimes', 'required', 'string', 'max:200'],
+            'title' => ['sometimes', 'required', 'string'],
             'description' => ['nullable', 'string'],
             'status' => ['sometimes', 'string', Rule::in(['todo', 'in_progress', 'review', 'done'])],
             'priority' => ['sometimes', 'string', Rule::in(['low', 'medium', 'high'])],

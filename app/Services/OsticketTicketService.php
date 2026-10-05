@@ -52,7 +52,7 @@ class OsticketTicketService
         $description = preg_replace('/^dear\s+tim[,\s]*/iu', '', $description) ?? $description;
         $description = preg_replace('/^halo[,\s]*/iu', '', $description) ?? $description;
 
-        if (preg_match('/\b(?<verb>buatkan|buat|kerjakan|perbaiki|cek|periksa|update|perbarui|buat)\s+(?<detail>.+?)(?:\s*:\s*https?:\/\/|$)/iu', $description, $matches) === 1) {
+        if (preg_match('/\b(?<verb>buatkan|buat|kerjakan|perbaiki|cek|periksa|update|perbarui|buat)\s+(?<detail>.+?)(?:\s*:?[\s]*https?:\/\/|\d+\.\s+|$)/iu', $description, $matches) === 1) {
             $verbs = [
                 'buatkan' => 'Buat',
                 'buat' => 'Buat',
@@ -64,13 +64,14 @@ class OsticketTicketService
                 'perbarui' => 'Perbarui',
             ];
             $detail = trim((string) $matches['detail'], " \t\n\r\0\x0B.,;:-");
+            $title = trim(($verbs[Str::lower($matches['verb'])] ?? ucfirst($matches['verb'])).' '.$detail);
 
-            return trim(($verbs[Str::lower($matches['verb'])] ?? ucfirst($matches['verb'])).' '.$detail);
+            return Str::limit($title, 190, '...');
         }
 
         $subject = trim((string) ($ticket['subject'] ?? ''));
 
-        return $subject !== '' ? $subject : 'Ticket #'.($ticket['ticket_number'] ?? $ticket['ticket_id']);
+        return Str::limit($subject !== '' ? $subject : 'Ticket #'.($ticket['ticket_number'] ?? $ticket['ticket_id']), 190, '...');
     }
 
     /**
