@@ -152,10 +152,11 @@ class TimesheetExportService
                 $calcPr->setAttribute('forceFullCalc', '1');
             }
 
-            $this->removeCalculationChain($zip);
+            $contentTypes = $this->removeCalculationChain($zip);
             $this->addSignatureImages(
                 $zip,
                 $sheet,
+                $contentTypes,
                 $options['signature_data'],
                 $options['supervisor_signature_data'] ?? null,
             );
@@ -453,7 +454,7 @@ class TimesheetExportService
         }
     }
 
-    private function removeCalculationChain(ZipArchive $zip): void
+    private function removeCalculationChain(ZipArchive $zip): DOMDocument
     {
         $workbookRelationships = $this->loadXml($zip->getFromName('xl/_rels/workbook.xml.rels'));
         $workbookRelationshipsXPath = new DOMXPath($workbookRelationships);
@@ -474,6 +475,8 @@ class TimesheetExportService
         $zip->deleteName('xl/calcChain.xml');
         $this->replaceZipEntry($zip, 'xl/_rels/workbook.xml.rels', $workbookRelationships->saveXML());
         $this->replaceZipEntry($zip, '[Content_Types].xml', $contentTypes->saveXML());
+
+        return $contentTypes;
     }
 
     private function cell(DOMXPath $xpath, string $reference): DOMElement
@@ -537,6 +540,7 @@ class TimesheetExportService
     private function addSignatureImages(
         ZipArchive $zip,
         DOMDocument $sheet,
+        DOMDocument $contentTypes,
         string $creatorDataUri,
         ?string $supervisorDataUri,
     ): void {
@@ -597,7 +601,6 @@ XML;
         $drawingNode->setAttributeNS(self::OFFICE_RELATIONSHIPS_NAMESPACE, 'r:id', 'rId1');
         $sheet->documentElement?->appendChild($drawingNode);
 
-        $contentTypes = $this->loadXml($zip->getFromName('[Content_Types].xml'));
         $contentRoot = $contentTypes->documentElement;
 
         if ($contentRoot === null) {
