@@ -40,6 +40,18 @@ jobs:
           php artisan key:generate --ansi
           php artisan migrate --force
 
+      - name: Prepare storage directories
+        run: |
+          mkdir -p \
+            storage/app/private \
+            storage/app/public \
+            storage/framework/cache/data \
+            storage/framework/sessions \
+            storage/framework/testing \
+            storage/framework/views \
+            storage/logs \
+            bootstrap/cache
+
       - name: Install JavaScript dependencies
         run: npm ci
 
