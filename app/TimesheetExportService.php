@@ -207,8 +207,7 @@ class TimesheetExportService
         }
 
         if ($tasks->isNotEmpty() && $tasks->every(fn (Task $task): bool => $task->latestReview?->status === 'approved'
-            && $task->latestReview->signature_path !== null
-            && Storage::disk('public')->exists($task->latestReview->signature_path))) {
+            && $task->latestReview->signature_path !== null)) {
             return 'approved';
         }
 
