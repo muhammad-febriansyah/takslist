@@ -1,9 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: takslist:latest
+    image: ghcr.io/muhammad-febriansyah/takslist:latest
     restart: unless-stopped
     env_file:
       - .env
