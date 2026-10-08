@@ -17,7 +17,7 @@ class DashboardController extends Controller
         /** @var User $user */
         $user = $request->user();
         $today = CarbonImmutable::today();
-        $taskQuery = Task::visibleTo($user);
+        $taskQuery = Task::ownedBy($user);
         $statusCounts = (clone $taskQuery)
             ->selectRaw('status, count(*) as aggregate')
             ->groupBy('status')
