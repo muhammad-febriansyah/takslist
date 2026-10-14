@@ -10,6 +10,7 @@ use DateTimeImmutable;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -39,11 +40,7 @@ class TimesheetExportService
 
         $firstDay = $period->modify('first day of this month');
         $lastDay = $period->modify('last day of this month');
-        $tasksByDate = Task::ownedBy($user)
-            ->whereBetween('due_date', [$firstDay->format('Y-m-d'), $lastDay->format('Y-m-d')])
-            ->orderBy('due_date')
-            ->orderBy('sort_order')
-            ->get(['due_date', 'title', 'description', 'external_ticket_number'])
+        $tasksByDate = $this->tasksForPeriod($user, $firstDay, $lastDay)
             ->groupBy(fn (Task $task): string => $task->due_date?->format('Y-m-d') ?? '');
 
         $fromTime = 8 / 24;
@@ -173,6 +170,52 @@ class TimesheetExportService
         $zip->close();
 
         return $outputPath;
+    }
+
+    /**
+     * Build spreadsheet-shaped data for an in-page preview without creating a workbook.
+     *
+     * @return array{rows: list<array{date: string, is_non_working_day: bool, start_time: ?string, end_time: ?string, work_hours: ?int, overtime_hours: ?int, activities: string}>}
+     */
+    public function previewRows(User $user, string $period): array
+    {
+        $periodDate = DateTimeImmutable::createFromFormat('!Y-m', $period);
+
+        if ($periodDate === false) {
+            throw new RuntimeException('Periode timesheet tidak valid.');
+        }
+
+        $firstDay = $periodDate->modify('first day of this month');
+        $lastDay = $periodDate->modify('last day of this month');
+        $tasksByDate = $this->tasksForPeriod($user, $firstDay, $lastDay)
+            ->groupBy(fn (Task $task): string => $task->due_date?->format('Y-m-d') ?? '');
+        $rows = [];
+        $daysInMonth = (int) $lastDay->format('j');
+
+        for ($day = 1; $day <= $daysInMonth; $day++) {
+            $date = $firstDay->setDate(
+                (int) $firstDay->format('Y'),
+                (int) $firstDay->format('m'),
+                $day,
+            );
+            $isNonWorkingDay = $this->isRedDate($date);
+            $dayTasks = $tasksByDate->get($date->format('Y-m-d'), collect());
+
+            $rows[] = [
+                'date' => $this->formatIndonesianDate($date),
+                'is_non_working_day' => $isNonWorkingDay,
+                'start_time' => $isNonWorkingDay ? null : '08:00',
+                'end_time' => $isNonWorkingDay ? null : '17:00',
+                'work_hours' => $isNonWorkingDay ? null : 8,
+                'overtime_hours' => $isNonWorkingDay ? null : 0,
+                'activities' => $dayTasks
+                    ->values()
+                    ->map(fn (Task $task, int $index): string => $this->formatTaskDescription($task, $index + 1))
+                    ->implode("\n\n"),
+            ];
+        }
+
+        return ['rows' => $rows];
     }
 
     public function canExportForPeriod(User $user, string $period): bool
@@ -335,6 +378,15 @@ class TimesheetExportService
         ]);
     }
 
+    private function tasksForPeriod(User $user, DateTimeImmutable $firstDay, DateTimeImmutable $lastDay): Collection
+    {
+        return Task::ownedBy($user)
+            ->whereBetween('due_date', [$firstDay->format('Y-m-d'), $lastDay->format('Y-m-d')])
+            ->orderBy('due_date')
+            ->orderBy('sort_order')
+            ->get(['due_date', 'title', 'description', 'external_ticket_number']);
+    }
+
     private function setCellStyle(DOMXPath $xpath, string $reference, int $styleIndex): void
     {
         $this->cell($xpath, $reference)->setAttribute('s', (string) $styleIndex);
@@ -368,7 +420,8 @@ class TimesheetExportService
         $stylesXPath = $this->xpath($styles);
         $fonts = $stylesXPath->query('//main:fonts')->item(0);
         $cellXfs = $stylesXPath->query('//main:cellXfs')->item(0);
-        if (! $fonts instanceof DOMElement || ! $cellXfs instanceof DOMElement) {
+        $fills = $stylesXPath->query('//main:fills')->item(0);
+        if (! $fonts instanceof DOMElement || ! $cellXfs instanceof DOMElement || ! $fills instanceof DOMElement) {
             throw new RuntimeException('Struktur style template timesheet tidak valid.');
         }
 
@@ -381,6 +434,20 @@ class TimesheetExportService
                 $baseStyleIndexes[(int) $this->cell($sheetXPath, $column.$row)->getAttribute('s')] = true;
             }
         }
+
+        $redFill = $styles->createElementNS(self::MAIN_NAMESPACE, 'fill');
+        $patternFill = $styles->createElementNS(self::MAIN_NAMESPACE, 'patternFill');
+        $patternFill->setAttribute('patternType', 'solid');
+        $foreground = $styles->createElementNS(self::MAIN_NAMESPACE, 'fgColor');
+        $foreground->setAttribute('rgb', 'FFFF0000');
+        $background = $styles->createElementNS(self::MAIN_NAMESPACE, 'bgColor');
+        $background->setAttribute('indexed', '64');
+        $patternFill->appendChild($foreground);
+        $patternFill->appendChild($background);
+        $redFill->appendChild($patternFill);
+        $fills->appendChild($redFill);
+        $redFillIndex = $stylesXPath->query('//main:fills/main:fill')->length - 1;
+        $fills->setAttribute('count', (string) ($redFillIndex + 1));
 
         $redStyles = [];
         $nextFontIndex = $fontNodes->length;
@@ -419,7 +486,7 @@ class TimesheetExportService
                 }
 
                 $fontColor->removeAttribute('theme');
-                $fontColor->setAttribute('rgb', 'FFFF0000');
+                $fontColor->setAttribute('rgb', 'FFFFFFFF');
                 $fonts->appendChild($redFont);
                 $redFontIndexes[$baseFontIndex] = $nextFontIndex++;
             }
@@ -427,6 +494,8 @@ class TimesheetExportService
             $redStyle = $baseStyle->cloneNode(true);
             $redStyle->setAttribute('fontId', (string) $redFontIndexes[$baseFontIndex]);
             $redStyle->setAttribute('applyFont', '1');
+            $redStyle->setAttribute('fillId', (string) $redFillIndex);
+            $redStyle->setAttribute('applyFill', '1');
             $cellXfs->appendChild($redStyle);
             $redStyles[$baseStyleIndex] = $nextStyleIndex++;
         }

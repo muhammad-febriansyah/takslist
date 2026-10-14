@@ -27,8 +27,25 @@ class OsticketTaskController extends Controller
             /** @var User $user */
             $user = $request->user();
             $period = $request->string('period')->toString();
+            $preview = $this->tickets->previewFor($user, $period);
+            $ticketIds = collect($preview['tickets'])->pluck('ticket_id')->all();
+            $existingTicketIds = Task::query()
+                ->where('external_source', 'osticket')
+                ->whereIn('external_ticket_id', $ticketIds)
+                ->pluck('external_ticket_id')
+                ->map(fn (int|string $id): int => (int) $id)
+                ->all();
+            $existingTicketIdLookup = array_fill_keys($existingTicketIds, true);
 
-            return response()->json($this->tickets->previewFor($user, $period));
+            $preview['tickets'] = array_map(
+                fn (array $ticket): array => [
+                    ...$ticket,
+                    'already_imported' => isset($existingTicketIdLookup[$ticket['ticket_id']]),
+                ],
+                $preview['tickets'],
+            );
+
+            return response()->json($preview);
         } catch (Throwable $exception) {
             report($exception);
 

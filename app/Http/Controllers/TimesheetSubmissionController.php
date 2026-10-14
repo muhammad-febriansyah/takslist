@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreTimesheetSubmissionRequest;
+use App\Models\TimesheetSubmission;
+use App\Models\User;
 use App\Notifications\TaskFlowNotification;
 use App\Services\TaskReviewService;
 use App\TimesheetExportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -14,6 +18,27 @@ use Inertia\Inertia;
 
 class TimesheetSubmissionController extends Controller
 {
+    public function preview(
+        Request $request,
+        TimesheetSubmission $submission,
+        TimesheetExportService $service,
+    ): JsonResponse {
+        /** @var User $user */
+        $user = $request->user();
+        abort_unless($submission->user_id === $user->id, 404);
+
+        return response()->json([
+            'name' => $user->name,
+            'period' => $submission->period,
+            'status' => $submission->status,
+            'department' => $submission->department,
+            'client' => $submission->client,
+            'approved_by' => $submission->approved_by,
+            'approved_role' => $submission->approved_role,
+            ...$service->previewRows($user, $submission->period),
+        ]);
+    }
+
     public function store(
         StoreTimesheetSubmissionRequest $request,
         TimesheetExportService $service,
@@ -73,8 +98,8 @@ class TimesheetSubmissionController extends Controller
         Inertia::flash('toast', [
             'type' => $tasks->isNotEmpty() ? 'success' : 'warning',
             'message' => $tasks->isNotEmpty()
-                ? 'Pengajuan timesheet tersimpan dan '.$tasks->count().' task dikirim ke atasan.'
-                : 'Pengajuan timesheet tersimpan, tetapi tidak ada task Done pada periode ini yang bisa dikirim ke atasan.',
+                ? 'Pengajuan timesheet tersimpan dan '.$tasks->count().' task dikirim ke Dept Head.'
+                : 'Pengajuan timesheet tersimpan, tetapi tidak ada task Done pada periode ini yang bisa dikirim ke Dept Head.',
         ]);
 
         return back();

@@ -22,6 +22,7 @@ type UserRow = {
     email: string;
     role: Role;
     position: string | null;
+    birth_date: string | null;
     supervisor_id: number | null;
     supervisor: { id: number; name: string } | null;
     tasks_count: number;
@@ -46,8 +47,8 @@ const userColumnHelper = createColumnHelper<UsersTableFeatures, UserRow>();
 
 const roleLabels: Record<Role, string> = {
     admin: 'Admin',
-    atasan: 'Atasan',
-    bawahan: 'Bawahan',
+    atasan: 'Dept Head',
+    bawahan: 'Officer',
 };
 
 const roleItems = [
@@ -71,6 +72,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
     const [email, setEmail] = useState('');
     const [role, setRole] = useState<Role>('bawahan');
     const [position, setPosition] = useState('');
+    const [birthDate, setBirthDate] = useState('');
     const [supervisorId, setSupervisorId] = useState('');
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
@@ -109,6 +111,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
         setEmail('');
         setRole('bawahan');
         setPosition('');
+        setBirthDate('');
         setSupervisorId(supervisors[0] ? String(supervisors[0].id) : '');
         setPassword('');
         setPasswordConfirmation('');
@@ -126,6 +129,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
         setEmail(user.email);
         setRole(user.role);
         setPosition(user.position ?? '');
+        setBirthDate(user.birth_date ? user.birth_date.slice(0, 10) : '');
         setSupervisorId(user.supervisor_id ? String(user.supervisor_id) : '');
         setPassword('');
         setPasswordConfirmation('');
@@ -149,6 +153,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
             email: user.email,
             role: user.role,
             position: user.position ?? '',
+            birth_date: user.birth_date ? user.birth_date.slice(0, 10) : '',
             supervisor_id: user.supervisor_id ?? '',
             is_active: active,
         }, {
@@ -203,7 +208,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
             cell: ({ row }) => <Badge className="rounded-full border-0 bg-[#e8f4ec] text-[10px] text-[#32724e]">{roleLabels[row.original.role]}</Badge>,
         }),
         userColumnHelper.accessor('supervisor', {
-            header: 'Atasan',
+            header: 'Dept Head',
             cell: ({ row }) => <span className="text-[#6f887c]">{row.original.supervisor?.name ?? '—'}</span>,
         }),
         userColumnHelper.accessor('tasks_count', {
@@ -273,7 +278,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
                     <div>
                         <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-[#4b956d] uppercase">ADMIN / PENGGUNA</p>
                         <h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#173d30] sm:text-4xl">Kelola pengguna</h1>
-                        <p className="mt-2 text-sm leading-6 text-[#7f978d]">Atur akun, role, dan hubungan atasan-bawahan.</p>
+                        <p className="mt-2 text-sm leading-6 text-[#7f978d]">Atur akun, role, dan hubungan Dept Head-Officer.</p>
                     </div>
                     <Button type="button" onClick={openCreate} className="h-11 rounded-full bg-[#2d8b60] px-5 text-sm font-semibold text-white hover:bg-[#247850]">
                         <Plus className="size-4" /> Pengguna baru
@@ -420,11 +425,16 @@ export default function UsersPage({ users: pagination, supervisors, search: init
                                     <Input id="user-position" name="position" value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Contoh: Head of IT" className="h-11 rounded-xl border-[#d9e9df]" />
                                     <InputError message={errors.position} />
                                 </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="user-birth-date">Tanggal lahir</Label>
+                                    <Input id="user-birth-date" name="birth_date" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} max={new Date().toISOString().slice(0, 10)} className="h-11 rounded-xl border-[#d9e9df]" />
+                                    <InputError message={errors.birth_date} />
+                                </div>
                                 {role === 'bawahan' && (
                                     <div className="grid gap-2">
-                                        <Label htmlFor="user-supervisor">Atasan<RequiredMark /></Label>
+                                        <Label htmlFor="user-supervisor">Dept Head<RequiredMark /></Label>
                                         <select id="user-supervisor" name="supervisor_id" value={supervisorId} onChange={(event) => setSupervisorId(event.target.value)} required className="h-11 w-full rounded-xl border border-[#d9e9df] bg-white px-3 text-sm text-[#315847] outline-none focus:border-[#72b68a] focus:ring-2 focus:ring-[#dcefe2]">
-                                            <option value="">Pilih atasan</option>
+                                            <option value="">Pilih Dept Head</option>
                                             {supervisors.map((supervisor) => <option key={supervisor.id} value={supervisor.id}>{supervisor.name}</option>)}
                                         </select>
                                         <InputError message={errors.supervisor_id} />
@@ -475,7 +485,7 @@ export default function UsersPage({ users: pagination, supervisors, search: init
 
             <Dialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
                 <DialogContent className="border-[#f0d7d7] bg-white sm:max-w-[460px]">
-                    <DialogHeader><DialogTitle className="text-xl text-[#6e2929]">Hapus pengguna terpilih?</DialogTitle><DialogDescription className="leading-6 text-[#8f6e6e]">{selectedUserIds.length} akun akan dihapus permanen. Pastikan tidak ada akun atasan yang masih memiliki bawahan.</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle className="text-xl text-[#6e2929]">Hapus pengguna terpilih?</DialogTitle><DialogDescription className="leading-6 text-[#8f6e6e]">{selectedUserIds.length} akun akan dihapus permanen. Pastikan tidak ada akun Dept Head yang masih memiliki Officer.</DialogDescription></DialogHeader>
                     <DialogFooter><Button type="button" variant="outline" onClick={() => setIsBulkDeleteOpen(false)} className="h-11 rounded-xl border-[#dfeae3] text-[#557067]">Batal</Button><Button type="button" onClick={() => router.delete(bulkDestroy().url, { data: { user_ids: selectedUserIds }, preserveScroll: true, onSuccess: () => { setSelectedUserIds([]); setIsBulkDeleteOpen(false); } })} className="h-11 rounded-xl bg-[#c95353] px-5 text-white hover:bg-[#ad4141]"><Trash2 className="size-4" /> Hapus pengguna</Button></DialogFooter>
                 </DialogContent>
             </Dialog>

@@ -90,6 +90,41 @@ it('downloads a timesheet export for the authenticated user', function () use ($
         ->assertHeader('content-disposition');
 });
 
+it('previews a pending submission without downloading the workbook', function (): void {
+    $user = User::factory()->create(['name' => 'Budi TaskFlow']);
+    $submission = TimesheetSubmission::factory()->for($user)->create([
+        'period' => '2026-09',
+        'status' => 'pending',
+    ]);
+    Task::factory()->for($user)->create([
+        'title' => 'Review laporan mingguan',
+        'description' => 'Periksa hasil laporan.',
+        'external_ticket_number' => '608930',
+        'due_date' => '2026-09-03',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('tasks.timesheet-submissions.preview', $submission))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/json')
+        ->assertHeaderMissing('content-disposition')
+        ->assertJsonPath('status', 'pending')
+        ->assertJsonPath('name', 'Budi TaskFlow')
+        ->assertJsonPath('rows.2.start_time', '08:00')
+        ->assertJsonPath('rows.2.work_hours', 8)
+        ->assertJsonPath('rows.2.activities', "1. Review laporan mingguan\n   No tiket: #608930\n   Detail: Periksa hasil laporan.")
+        ->assertJsonPath('rows.5.is_non_working_day', true)
+        ->assertJsonPath('rows.5.start_time', null);
+});
+
+it('does not allow previewing another users timesheet submission', function (): void {
+    $submission = TimesheetSubmission::factory()->create();
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('tasks.timesheet-submissions.preview', $submission))
+        ->assertNotFound();
+});
+
 it('places creator and supervisor signatures in separate positions', function () use ($signatureData) {
     $owner = User::factory()->create();
 
@@ -140,7 +175,7 @@ it('blocks subordinate timesheet download until period tasks are approved', func
             'signature_data' => $signatureData,
         ])
         ->assertStatus(422)
-        ->assertJsonPath('message', 'Timesheet belum bisa diunduh. Semua task pada periode ini harus disetujui atasan.');
+        ->assertJsonPath('message', 'Timesheet belum bisa diunduh. Semua task pada periode ini harus disetujui Dept Head.');
 });
 
 it('uses the supervisor approval signature when a subordinate downloads a timesheet', function () use ($signatureData) {
@@ -219,7 +254,12 @@ it('marks weekend dates as red dates in the generated timesheet', function () us
         $font = $fonts->item((int) $style->attributes?->getNamedItem('fontId')?->nodeValue);
         $color = $stylesXPath->query('main:color', $font)->item(0);
 
-        expect($color?->attributes?->getNamedItem('rgb')?->nodeValue)->toBe('FFFF0000');
+        expect($color?->attributes?->getNamedItem('rgb')?->nodeValue)->toBe('FFFFFFFF');
+
+        $fill = $stylesXPath->query('//main:fills/main:fill')->item((int) $style->attributes?->getNamedItem('fillId')?->nodeValue);
+        $foreground = $stylesXPath->query('main:patternFill/main:fgColor', $fill)->item(0);
+
+        expect($foreground?->attributes?->getNamedItem('rgb')?->nodeValue)->toBe('FFFF0000');
     }
 
     expect($sheet)

@@ -21,7 +21,7 @@ it('creates a natural task title from ticket instructions', function (): void {
     ]))->toBe('Buat report dengan nama Fulfillment AKARI');
 });
 
-it('keeps ticket metadata and description in natural task description', function (): void {
+it('keeps only the ticket request in natural task description', function (): void {
     $description = (new OsticketTicketService)->descriptionFor([
         'ticket_id' => 1047,
         'ticket_number' => '608930',
@@ -32,11 +32,10 @@ it('keeps ticket metadata and description in natural task description', function
     ]);
 
     expect($description)
-        ->toContain('Perbaiki koneksi Gallery SIM.')
-        ->toContain('Sumber: osTicket #608930');
+        ->toBe("Perbaikan koneksi Gallery SIM.\n\nSumber: osTicket #608930");
 });
 
-it('formats ticket links as natural task details', function (): void {
+it('normalizes request and removes links while retaining ticket source', function (): void {
     $description = (new OsticketTicketService)->descriptionFor([
         'ticket_number' => '12345',
         'subject' => 'Support / Reporting BPR',
@@ -44,10 +43,30 @@ it('formats ticket links as natural task details', function (): void {
     ]);
 
     expect($description)
-        ->toContain('Buat report dengan nama Fulfillment AKARI.')
-        ->toContain("Link Metabase:\nhttps://metabase.example/report")
-        ->toContain('Sumber: osTicket #12345')
-        ->not->toContain('dear tim');
+        ->toBe("Pembuatan report Fulfillment AKARI.\n\nSumber: osTicket #12345")
+        ->not->toContain('dear tim')
+        ->not->toContain('https://');
+});
+
+it('summarises report requests and removes duplicate report name from menu', function (): void {
+    $description = (new OsticketTicketService)->descriptionFor([
+        'ticket_number' => '294124',
+        'description' => 'Tolong buatkan Report Komponen Gaji Kontrak Kerja https://metabase.example/report Menu : Metabase - OSM - Report Komponen Gaji Kontrak Kerja',
+    ]);
+
+    expect($description)
+        ->toBe("Pembuatan Report Komponen Gaji Kontrak Kerja.\n\nMenu: Metabase – OSM\n\nSumber: osTicket #294124")
+        ->not->toContain('https://');
+});
+
+it('clarifies requests to raise a report to reporting', function (): void {
+    $description = (new OsticketTicketService)->descriptionFor([
+        'ticket_number' => '791292',
+        'description' => 'Naikin ke reporting ya OSM-Report Beban Pendaftaran BPJS KS.',
+    ]);
+
+    expect($description)
+        ->toBe("Penambahan report OSM-Report Beban Pendaftaran BPJS KS ke menu Reporting.\n\nSumber: osTicket #791292");
 });
 
 it('does not include following ticket items or links in task title', function (): void {

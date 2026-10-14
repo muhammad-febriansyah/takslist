@@ -10,6 +10,8 @@ import {
     ListChecks,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
+import { OfficerPanel, SystemPanel, TeamPanel } from '@/components/dashboard/role-panels';
+import type { OfficerPanelData, SystemPanelData, TeamPanelData } from '@/components/dashboard/role-panels';
 import type { Auth } from '@/types/auth';
 import { dashboard } from '@/routes';
 import { index as calendarIndex } from '@/routes/calendar';
@@ -32,6 +34,10 @@ type DashboardEvent = {
 };
 
 type Props = {
+    view: 'officer' | 'dept_head' | 'admin';
+    officer: OfficerPanelData | null;
+    team: TeamPanelData | null;
+    system: SystemPanelData | null;
     stats: {
         total: number;
         in_progress: number;
@@ -52,6 +58,12 @@ type Props = {
 };
 
 type DashboardLink = ReturnType<typeof tasksIndex> | ReturnType<typeof calendarIndex>;
+
+const headerCopy = {
+    officer: { eyebrow: 'Ruang kerja Officer', description: 'Ringkasan pekerjaan, timesheet, dan agenda yang perlu kamu perhatikan hari ini.' },
+    dept_head: { eyebrow: 'Ruang kerja Dept Head', description: 'Pantau review yang menunggu dan kondisi pekerjaan tim kamu.' },
+    admin: { eyebrow: 'Ruang kerja Admin', description: 'Pantau kondisi pengguna, task, dan data akun di seluruh sistem.' },
+} as const;
 
 const statusLabels: Record<DashboardTask['status'], string> = {
     todo: 'To Do',
@@ -126,6 +138,10 @@ function StatCard({
 }
 
 export default function Dashboard({
+    view,
+    officer,
+    team,
+    system,
     stats,
     statusCounts,
     weeklyCompleted,
@@ -170,12 +186,23 @@ export default function Dashboard({
                     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <div className="mb-4 lg:hidden"><AppLogo /></div>
-                            <p className="mb-2 text-xs font-semibold tracking-[0.08em] text-[#5c9072] uppercase">Ruang kerja pribadi</p>
+                            <p className="mb-2 text-xs font-semibold tracking-[0.08em] text-[#5c9072] uppercase">{headerCopy[view].eyebrow}</p>
                             <h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#173d30] sm:text-4xl">Selamat datang kembali, {auth.user?.name ?? 'kamu'}</h1>
-                            <p className="mt-2 text-sm leading-6 text-[#71877b]">Ringkasan pekerjaan dan agenda yang perlu kamu perhatikan hari ini.</p>
+                            <p className="mt-2 text-sm leading-6 text-[#71877b]">{headerCopy[view].description}</p>
                         </div>
                         <Link href={tasksIndex()} className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-full bg-[#2d875c] px-4 text-xs font-semibold text-white transition hover:bg-[#236d49] sm:self-auto">Lihat semua task <ArrowUpRight className="size-4" /></Link>
                     </header>
+
+                    {view === 'officer' && officer && <OfficerPanel data={officer} />}
+                    {view === 'dept_head' && team && <TeamPanel data={team} weekLabels={chartLabels} />}
+                    {view === 'admin' && system && <SystemPanel data={system} />}
+
+                    {view !== 'officer' && (
+                        <div className="pt-2">
+                            <h2 className="text-lg font-semibold tracking-[-0.03em] text-[#173d30]">Task pribadi</h2>
+                            <p className="mt-1 text-xs text-[#8aa097]">Pekerjaan yang kamu miliki sendiri.</p>
+                        </div>
+                    )}
 
                     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <StatCard label="Total task" value={stats.total} detail="Semua task milikmu" icon={ListChecks} tone="green" />

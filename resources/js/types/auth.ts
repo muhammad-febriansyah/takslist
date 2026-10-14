@@ -4,6 +4,7 @@ export type User = {
     email: string;
     role: 'admin' | 'atasan' | 'bawahan';
     position?: string | null;
+    birth_date?: string | null;
     supervisor_id?: number | null;
     is_active: boolean;
     avatar?: string | null;

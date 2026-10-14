@@ -31,6 +31,7 @@ class UpdateUserRequest extends FormRequest
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
             'role' => ['required', 'string', Rule::in(['admin', 'atasan', 'bawahan'])],
             'position' => ['nullable', 'string', 'max:120'],
+            'birth_date' => ['nullable', 'date', 'before:today'],
             'is_active' => ['required', 'boolean'],
             'supervisor_id' => [
                 'nullable',

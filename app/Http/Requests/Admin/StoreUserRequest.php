@@ -29,6 +29,7 @@ class StoreUserRequest extends FormRequest
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'role' => ['required', 'string', Rule::in(['admin', 'atasan', 'bawahan'])],
             'position' => ['nullable', 'string', 'max:120'],
+            'birth_date' => ['nullable', 'date', 'before:today'],
             'is_active' => ['sometimes', 'boolean'],
             'supervisor_id' => [
                 'nullable',

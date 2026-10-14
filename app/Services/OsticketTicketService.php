@@ -80,44 +80,59 @@ class OsticketTicketService
     public function descriptionFor(array $ticket): string
     {
         $description = trim((string) ($ticket['description'] ?? ''));
-        $description = $description !== '' ? $description : 'Tidak ada deskripsi ticket.';
-        $ticketNumber = $ticket['ticket_number'] ?? $ticket['ticket_id'];
-        $title = rtrim($this->titleFor($ticket), '.').'.';
-        $links = [];
+        $description = (string) preg_replace('/^\s*Sumber:\s*osTicket\s*#.*$/imu', '', $description);
+        $description = (string) preg_replace('/\s*https?:\/\/\S+/iu', ' ', $description);
+        $description = preg_replace('/^(?:dear\s+tim|halo)[,\s]*/iu', '', $description) ?? $description;
+        $description = preg_replace('/^(?:mohon\s+bantu|mohon|tolong)\s+/iu', '', trim($description)) ?? $description;
+        $description = preg_replace('/\s+/u', ' ', $description) ?? $description;
+        $description = trim($description, " \t\n\r\0\x0B.,;:-");
 
-        if (preg_match_all('/https?:\/\/\S+/iu', $description, $matches) > 0) {
-            $links = array_map(
-                static fn (string $link): string => rtrim($link, '.,);]'),
-                $matches[0],
-            );
+        $menu = null;
+
+        if (preg_match('/\bmenu\s*:\s*(.+)$/iu', $description, $matches, PREG_OFFSET_CAPTURE) === 1) {
+            $menu = trim($matches[1][0], " \t\n\r\0\x0B.,;:-");
+            $description = trim(substr($description, 0, $matches[0][1]), " \t\n\r\0\x0B.,;:-");
         }
 
-        $descriptionWithoutLinks = trim((string) preg_replace('/\s*https?:\/\/\S+/iu', '', $description));
-        $descriptionWithoutLinks = preg_replace('/^(?:dear\s+tim|halo)[,\s]*/iu', '', $descriptionWithoutLinks) ?? $descriptionWithoutLinks;
-        $descriptionWithoutLinks = trim($descriptionWithoutLinks, " \t\n\r\0\x0B.,;:-");
-        $detail = $descriptionWithoutLinks !== ''
-            && ! preg_match('/\b(?:mohon|tolong)\s+(?:bantu\s+)?(?:buatkan|buat|kerjakan|perbaiki|cek|periksa|update|perbarui)\b/iu', $descriptionWithoutLinks)
-            && ! str_contains(Str::lower($descriptionWithoutLinks), Str::lower($this->titleFor($ticket)))
-            ? $descriptionWithoutLinks
-            : null;
-
-        $lines = [$title];
-
-        if ($detail !== null) {
-            $lines[] = '';
-            $lines[] = $detail.'.';
+        if (preg_match('/^naik(?:in|kan)\s+ke\s+reporting(?:\s+ya)?\s+(.+)$/iu', $description, $matches) === 1) {
+            $description = 'Penambahan report '.$matches[1].' ke menu Reporting';
         }
 
-        foreach ($links as $link) {
-            $lines[] = '';
-            $lines[] = str_contains(Str::lower($link), 'metabase') ? 'Link Metabase:' : 'Link:';
-            $lines[] = $link;
+        $description = preg_replace('/\bdengan\s+nama\s+/iu', ' ', $description) ?? $description;
+        $description = preg_replace('/^(?:buatkan|buat)\s+/iu', 'Pembuatan ', $description) ?? $description;
+        $description = preg_replace('/^perbaiki\s+/iu', 'Perbaikan ', $description) ?? $description;
+        $description = preg_replace('/^(?:cek|periksa)\s+/iu', 'Pengecekan ', $description) ?? $description;
+        $description = preg_replace('/^(?:update|perbarui)\s+/iu', 'Pembaruan ', $description) ?? $description;
+        $description = preg_replace('/^kerjakan\s+/iu', 'Pengerjaan ', $description) ?? $description;
+        $description = preg_replace('/\s+/u', ' ', $description) ?? $description;
+        $description = trim($description, " \t\n\r\0\x0B.,;:-");
+
+        if ($description === '') {
+            return 'Tidak ada deskripsi ticket.';
         }
 
-        $lines[] = '';
-        $lines[] = 'Sumber: osTicket #'.$ticketNumber;
+        $request = ucfirst($description).(preg_match('/[.!?]$/u', $description) === 1 ? '' : '.');
 
-        return implode("\n", $lines);
+        if ($menu !== null) {
+            $requestDetails = preg_replace('/^(?:pembuatan|perbaikan|pengecekan|pembaruan|pengerjaan)\s+/iu', '', $description) ?? $description;
+            $menuPattern = '/'.preg_quote($requestDetails, '/').'/iu';
+            $menu = preg_replace($menuPattern, '', $menu, 1) ?? $menu;
+            $menu = preg_replace('/\s*-\s*/u', ' – ', $menu) ?? $menu;
+            $menu = trim($menu, " \t\n\r\0\x0B.,;:-–");
+        }
+
+        $ticketNumber = $ticket['ticket_number'] ?? $ticket['ticket_id'] ?? null;
+        $lines = [$request];
+
+        if ($menu !== null && $menu !== '') {
+            $lines[] = 'Menu: '.$menu;
+        }
+
+        if ($ticketNumber !== null && $ticketNumber !== '') {
+            $lines[] = 'Sumber: osTicket #'.$ticketNumber;
+        }
+
+        return implode("\n\n", $lines);
     }
 
     /**

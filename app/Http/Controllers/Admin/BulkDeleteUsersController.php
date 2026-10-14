@@ -24,7 +24,7 @@ class BulkDeleteUsersController extends Controller
         }
 
         if ($users->contains(fn (User $user): bool => $user->subordinates()->exists())) {
-            throw ValidationException::withMessages(['user_ids' => 'Atasan yang masih memiliki bawahan tidak dapat dihapus.']);
+            throw ValidationException::withMessages(['user_ids' => 'Dept Head yang masih memiliki Officer tidak dapat dihapus.']);
         }
 
         User::query()->whereKey($ids)->delete();

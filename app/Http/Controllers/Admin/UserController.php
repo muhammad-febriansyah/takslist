@@ -26,7 +26,7 @@ class UserController extends Controller
         $search = trim($request->string('search')->toString());
 
         $users = User::query()
-            ->select(['id', 'name', 'email', 'role', 'position', 'supervisor_id', 'is_active', 'created_at'])
+            ->select(['id', 'name', 'email', 'role', 'position', 'birth_date', 'supervisor_id', 'is_active', 'created_at'])
             ->with('supervisor:id,name')
             ->withCount('tasks')
             ->when($search !== '', function (Builder $query) use ($search): void {
@@ -119,7 +119,7 @@ class UserController extends Controller
         }
 
         if ($user->subordinates()->exists()) {
-            throw ValidationException::withMessages(['user' => 'Atasan yang masih memiliki bawahan tidak dapat dihapus.']);
+            throw ValidationException::withMessages(['user' => 'Dept Head yang masih memiliki Officer tidak dapat dihapus.']);
         }
 
         $user->delete();

@@ -66,7 +66,7 @@ export function SearchableSelect({
                     className="h-[52px] w-full justify-between rounded-2xl border-[#d5e5da] bg-white px-4 text-left text-sm font-normal text-[#113524] shadow-none hover:bg-[#fbfdfb] hover:text-[#113524] focus-visible:border-[#55906a] focus-visible:ring-4 focus-visible:ring-[#eaf2ec]"
                 >
                     <span className={cn('truncate', !selectedOption && 'text-[#225e3d]/35')}>
-                        {selectedOption?.label ?? (options.length ? placeholder : 'Belum ada atasan aktif')}
+                        {selectedOption?.label ?? (options.length ? placeholder : 'Belum ada Dept Head aktif')}
                     </span>
                     <ChevronsUpDown className="size-4 shrink-0 text-[#225e3d]/55" />
                 </Button>

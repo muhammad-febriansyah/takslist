@@ -11,6 +11,8 @@ use App\Models\TaskReview;
 use App\Notifications\TaskFlowNotification;
 use App\Services\TaskReviewService;
 use App\TimesheetExportService;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -82,7 +84,7 @@ class TaskReviewController extends Controller
 
         if ($task->reviews()->where('status', 'pending')->exists()) {
             throw ValidationException::withMessages([
-                'task' => 'Task sudah menunggu review atasan.',
+                'task' => 'Task sudah menunggu review Dept Head.',
             ]);
         }
 
@@ -149,6 +151,58 @@ class TaskReviewController extends Controller
         );
     }
 
+    public function destroySubmission(
+        Request $request,
+        TaskReview $review,
+        TimesheetExportService $timesheetService,
+    ): RedirectResponse {
+        Gate::authorize('delete', $review);
+
+        $period = $review->task?->due_date?->format('Y-m');
+        $submissionReviews = DB::transaction(function () use ($request, $review, $period): Collection {
+            $reviews = TaskReview::query()
+                ->where('reviewer_id', $request->user()->id)
+                ->where('submitted_by', $review->submitted_by)
+                ->whereHas('task', function (Builder $query) use ($period): void {
+                    if ($period === null) {
+                        $query->whereNull('due_date');
+
+                        return;
+                    }
+
+                    $periodStart = CarbonImmutable::createFromFormat('!Y-m', $period)->startOfMonth();
+                    $periodEnd = $periodStart->endOfMonth();
+
+                    $query->whereBetween('due_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
+                })
+                ->with('task')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($reviews as $submissionReview) {
+                if ($submissionReview->status === 'pending') {
+                    $submissionReview->task?->update(['status' => 'done']);
+                }
+
+                $submissionReview->delete();
+            }
+
+            return $reviews;
+        });
+
+        Storage::disk('public')->delete($submissionReviews->pluck('signature_path')->filter()->all());
+
+        $submissionReviews
+            ->pluck('task')
+            ->filter()
+            ->unique('id')
+            ->each(fn (Task $task) => $timesheetService->syncSubmissionForTask($task));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Pengajuan dan seluruh review task pada periode tersebut berhasil dihapus.']);
+
+        return back();
+    }
+
     public function update(
         ReviewTaskRequest $request,
         TaskReview $review,
@@ -199,7 +253,7 @@ class TaskReviewController extends Controller
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => $validated['decision'] === 'approved' ? 'Task disetujui dan ditandatangani.' : 'Task dikembalikan ke bawahan.',
+            'message' => $validated['decision'] === 'approved' ? 'Task disetujui dan ditandatangani.' : 'Task dikembalikan ke Officer.',
         ]);
 
         return back();

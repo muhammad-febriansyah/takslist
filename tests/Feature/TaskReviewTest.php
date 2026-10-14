@@ -274,6 +274,34 @@ it('marks only the signed-in user notification as read', function () {
         ->patch(route('notifications.read', $notification))
         ->assertRedirect();
 
+    $readAt = $notification->fresh()->read_at;
+
+    $this->actingAs($user)
+        ->patch(route('notifications.read', $notification))
+        ->assertRedirect();
+
+    expect($notification->fresh()->read_at)->toEqual($readAt)
+        ->and($otherNotification->fresh()->read_at)->toBeNull();
+});
+
+it('marks all notifications belonging to the signed-in user as read', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $notification = $user->notifications()->create([
+        'id' => (string) str()->uuid(),
+        'type' => 'App\\Notifications\\TaskFlowNotification',
+        'data' => ['type' => 'info', 'title' => 'Info', 'message' => 'Info', 'href' => route('dashboard')],
+    ]);
+    $otherNotification = $otherUser->notifications()->create([
+        'id' => (string) str()->uuid(),
+        'type' => 'App\\Notifications\\TaskFlowNotification',
+        'data' => ['type' => 'info', 'title' => 'Info', 'message' => 'Info', 'href' => route('dashboard')],
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('notifications.read-all'))
+        ->assertRedirect();
+
     expect($notification->fresh()->read_at)->not->toBeNull()
         ->and($otherNotification->fresh()->read_at)->toBeNull();
 });

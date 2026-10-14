@@ -63,7 +63,10 @@ import {
     bulkStatus as bulkUpdateTaskStatus,
 } from '@/routes/tasks';
 import { timesheet as exportTimesheet } from '@/routes/tasks/export';
-import { store as storeTimesheetSubmission } from '@/routes/tasks/timesheet-submissions';
+import {
+    preview as previewTimesheetSubmission,
+    store as storeTimesheetSubmission,
+} from '@/routes/tasks/timesheet-submissions';
 import osticketRoutes from '@/routes/tasks/osticket';
 
 type Task = {
@@ -126,6 +129,25 @@ type TimesheetSubmission = {
     can_download: boolean;
 };
 
+type TimesheetPreviewData = {
+    name: string;
+    period: string;
+    status: TimesheetSubmission['status'];
+    department: string;
+    client: string | null;
+    approved_by: string;
+    approved_role: string | null;
+    rows: Array<{
+        date: string;
+        is_non_working_day: boolean;
+        start_time: string | null;
+        end_time: string | null;
+        work_hours: number | null;
+        overtime_hours: number | null;
+        activities: string;
+    }>;
+};
+
 type OsticketTicket = {
     ticket_id: number;
     ticket_number: string;
@@ -136,6 +158,7 @@ type OsticketTicket = {
     natural_title: string;
     description: string;
     assigned_to: string;
+    already_imported: boolean;
 };
 
 type OsticketPreview = {
@@ -232,17 +255,81 @@ function formatMonth(period: string): string {
     }).format(new Date(`${period.slice(0, 7)}-01T00:00:00`));
 }
 
-function taskDescriptionPreview(description: string | null): string | null {
+function taskDescriptionPreview(description: string | null, externalTicketNumber: string | null = null): string | null {
     const value = description?.trim() ?? '';
 
-    if (value === '') {
+    if (value === '' && externalTicketNumber === null) {
         return null;
     }
 
     const marker = 'Deskripsi:';
     const markerIndex = value.indexOf(marker);
 
-    return (markerIndex >= 0 ? value.slice(markerIndex + marker.length) : value).trim() || null;
+    let preview = (markerIndex >= 0 ? value.slice(markerIndex + marker.length) : value).trim();
+
+    if (externalTicketNumber !== null) {
+        preview = preview
+            .replace(/^\s*Sumber:\s*osTicket\s*#.*$/gimu, '')
+            .replace(/https?:\/\/\S+/giu, ' ')
+            .replace(/^(?:dear\s+tim|halo)[,\s]*/iu, '')
+            .replace(/^(?:mohon\s+bantu|mohon|tolong)\s+/iu, '')
+            .replace(/[ \t]+/gu, ' ')
+            .replace(/\s+/gu, ' ')
+            .trim();
+
+        let menu: string | null = null;
+        const menuMatch = preview.match(/\bmenu\s*:\s*(.+)$/iu);
+
+        if (menuMatch?.index !== undefined) {
+            menu = menuMatch[1].trim().replace(/^[.,;:\s-]+|[.,;:\s-]+$/gu, '');
+            preview = preview.slice(0, menuMatch.index).trim().replace(/^[.,;:\s-]+|[.,;:\s-]+$/gu, '');
+        }
+
+        const addToReportingMatch = preview.match(/^naik(?:in|kan)\s+ke\s+reporting(?:\s+ya)?\s+(.+)$/iu);
+        if (addToReportingMatch) {
+            preview = `Penambahan report ${addToReportingMatch[1]} ke menu Reporting`;
+        }
+
+        preview = preview
+            .replace(/\bdengan\s+nama\s+/iu, ' ')
+            .replace(/^(?:buatkan|buat)\s+/iu, 'Pembuatan ')
+            .replace(/^perbaiki\s+/iu, 'Perbaikan ')
+            .replace(/^(?:cek|periksa)\s+/iu, 'Pengecekan ')
+            .replace(/^(?:update|perbarui)\s+/iu, 'Pembaruan ')
+            .replace(/^kerjakan\s+/iu, 'Pengerjaan ')
+            .replace(/\s+/gu, ' ')
+            .trim()
+            .replace(/^[.,;:\s-]+|[.,;:\s-]+$/gu, '');
+
+        if (preview !== '') {
+            preview = `${preview.charAt(0).toLocaleUpperCase('id-ID')}${preview.slice(1)}`;
+            if (!/[.!?]$/u.test(preview)) {
+                preview += '.';
+            }
+        }
+
+        const requestDetails = preview.replace(/^(?:pembuatan|perbaikan|pengecekan|pembaruan|pengerjaan)\s+/iu, '').replace(/[.!?]$/u, '');
+        if (menu !== null && requestDetails !== '') {
+            menu = menu.replace(new RegExp(requestDetails.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'iu'), '');
+        }
+        if (menu !== null) {
+            menu = menu
+                .replace(/\s*-\s*/gu, ' – ')
+                .replace(/\s+/gu, ' ')
+                .trim()
+                .replace(/^[.,;:\s–-]+|[.,;:\s–-]+$/gu, '');
+        }
+
+        const lines = preview === '' ? [] : [preview];
+        if (menu !== null && menu !== '') {
+            lines.push(`Menu: ${menu}`);
+        }
+        lines.push(`Sumber: osTicket #${externalTicketNumber}`);
+
+        preview = lines.join('\n\n');
+    }
+
+    return preview || null;
 }
 
 function TaskCard({
@@ -273,7 +360,7 @@ function TaskCard({
     canEdit: boolean;
 }) {
     const priority = priorityStyles[task.priority];
-    const description = taskDescriptionPreview(task.description);
+    const description = taskDescriptionPreview(task.description, task.external_ticket_number);
     const progress =
         task.subtasks.total > 0
             ? `${Math.round((task.subtasks.completed / task.subtasks.total) * 100)}%`
@@ -415,6 +502,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isSubmissionPreviewOpen, setIsSubmissionPreviewOpen] = useState(false);
+    const [isSubmissionPreviewLoading, setIsSubmissionPreviewLoading] = useState(false);
+    const [submissionPreview, setSubmissionPreview] = useState<TimesheetPreviewData | null>(null);
     const [isDuplicateSubmissionDialogOpen, setIsDuplicateSubmissionDialogOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [selectedSubmissionForExport, setSelectedSubmissionForExport] = useState<TimesheetSubmission | null>(null);
@@ -431,7 +521,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [department, setDepartment] = useState('');
     const [client, setClient] = useState(exportApprover?.name ?? 'SIM');
     const [approvedBy, setApprovedBy] = useState(exportApprover?.name ?? '');
-    const [approvedRole, setApprovedRole] = useState(exportApprover?.position ?? (exportApprover ? 'Atasan' : ''));
+    const [approvedRole, setApprovedRole] = useState(exportApprover?.position ?? (exportApprover ? 'Dept Head' : ''));
     const [period, setPeriod] = useState(`${initialPeriod}-01`);
     const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
     const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null);
@@ -519,13 +609,17 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
 
     useEffect(() => {
         const checkbox = selectAllOsticketRef.current;
-        const ticketCount = osticketPreview?.tickets.length ?? 0;
+        const selectableTicketIds = osticketPreview?.tickets
+            .filter((ticket) => !ticket.already_imported)
+            .map((ticket) => ticket.ticket_id) ?? [];
 
         if (!checkbox) {
             return;
         }
 
-        checkbox.indeterminate = selectedOsticketIds.length > 0 && selectedOsticketIds.length < ticketCount;
+        const selectedSelectableCount = selectableTicketIds.filter((id) => selectedOsticketIds.includes(id)).length;
+
+        checkbox.indeterminate = selectedSelectableCount > 0 && selectedSelectableCount < selectableTicketIds.length;
     }, [osticketPreview, selectedOsticketIds]);
 
     useEffect(() => {
@@ -543,7 +637,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         }
 
         setApprovedBy(exportApprover.name);
-        setApprovedRole(exportApprover.position ?? 'Atasan');
+        setApprovedRole(exportApprover.position ?? 'Dept Head');
         setClient(exportApprover.name);
     }, [exportApprover]);
 
@@ -627,7 +721,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             header: 'Deskripsi',
             cell: ({ row }) => (
                 <p className="max-w-[520px] whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
-                    {taskDescriptionPreview(row.original.description) ?? 'Tanpa deskripsi'}
+                    {taskDescriptionPreview(row.original.description, row.original.external_ticket_number) ?? 'Tanpa deskripsi'}
                 </p>
             ),
         }),
@@ -716,9 +810,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     <GripVertical className="hidden size-4 text-[#b2c3b8] sm:block" />
                     <div>
                         <p className="text-sm font-semibold text-[#173d30]">{row.original.title}</p>
-                        {taskDescriptionPreview(row.original.description) && (
+                        {taskDescriptionPreview(row.original.description, row.original.external_ticket_number) && (
                             <p className="mt-1 max-w-[480px] whitespace-pre-line break-words text-sm leading-6 text-[#557067]">
-                                {taskDescriptionPreview(row.original.description)}
+                                {taskDescriptionPreview(row.original.description, row.original.external_ticket_number)}
                             </p>
                         )}
                         <p className="mt-1 text-xs text-[#8aa097]">{row.original.project?.name ?? 'Tanpa project'}</p>
@@ -811,7 +905,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             cell: ({ row }) => (
                 <div>
                     <p className="text-sm text-[#557067]">{row.original.approved_by}</p>
-                    <p className="mt-1 text-xs text-[#9aac9f]">{row.original.approved_role ?? 'Atasan'}</p>
+                    <p className="mt-1 text-xs text-[#9aac9f]">{row.original.approved_role ?? 'Dept Head'}</p>
                 </div>
             ),
         }),
@@ -823,7 +917,16 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             id: 'actions',
             header: () => <span className="block text-right">Aksi</span>,
             cell: ({ row }) => (
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void openSubmissionPreview(row.original)}
+                        className="border-[#cfe2d5] text-xs text-[#236d49]"
+                    >
+                        <Eye className="size-3.5" /> Preview
+                    </Button>
                     <Button
                         type="button"
                         variant="outline"
@@ -843,6 +946,34 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         data: timesheetSubmissions.data,
         columns: submissionTableColumns,
     });
+
+    async function openSubmissionPreview(submission: TimesheetSubmission): Promise<void> {
+        setSubmissionPreview(null);
+        setIsSubmissionPreviewOpen(true);
+        setIsSubmissionPreviewLoading(true);
+
+        try {
+            const response = await fetch(previewTimesheetSubmission.url(submission.id), {
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => null) as TimesheetPreviewData | { message?: string } | null;
+
+            if (!response.ok) {
+                throw new Error(payload && 'message' in payload ? payload.message : undefined);
+            }
+
+            setSubmissionPreview(payload as TimesheetPreviewData);
+        } catch (error) {
+            setIsSubmissionPreviewOpen(false);
+            toast.error(error instanceof Error ? error.message : 'Preview timesheet gagal dimuat.');
+        } finally {
+            setIsSubmissionPreviewLoading(false);
+        }
+    }
 
     function openNewTimesheetSubmission(): void {
         setSelectedSubmissionForExport(null);
@@ -1052,6 +1183,10 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     }
 
     function toggleOsticketTicket(ticketId: number): void {
+        if (osticketPreview?.tickets.find((ticket) => ticket.ticket_id === ticketId)?.already_imported) {
+            return;
+        }
+
         setSelectedOsticketIds((ids) =>
             ids.includes(ticketId)
                 ? ids.filter((id) => id !== ticketId)
@@ -1060,7 +1195,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     }
 
     function toggleAllOsticketTickets(): void {
-        const ticketIds = osticketPreview?.tickets.map((ticket) => ticket.ticket_id) ?? [];
+        const ticketIds = osticketPreview?.tickets
+            .filter((ticket) => !ticket.already_imported)
+            .map((ticket) => ticket.ticket_id) ?? [];
         const allSelected = ticketIds.length > 0 && ticketIds.every((id) => selectedOsticketIds.includes(id));
 
         setSelectedOsticketIds(allSelected ? [] : ticketIds);
@@ -1207,7 +1344,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
 
         if (selectedSubmissionForExport !== null) {
             if (!selectedSubmissionForExport.has_signature) {
-                toast.warning('Pengajuan ini belum memiliki tanda tangan bawahan. Buat pengajuan baru untuk menyimpan tanda tangan.');
+                toast.warning('Pengajuan ini belum memiliki tanda tangan Officer. Buat pengajuan baru untuk menyimpan tanda tangan.');
 
                 return;
             }
@@ -1225,7 +1362,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         }
 
         if (usesSupervisorApproval && !exportApprover) {
-            toast.warning('Akunmu belum memiliki atasan untuk approval timesheet.');
+            toast.warning('Akunmu belum memiliki Dept Head untuk approval timesheet.');
 
             return;
         }
@@ -1233,7 +1370,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         const canvas = signatureCanvasRef.current;
 
         if (!canvas || !hasSignature) {
-            toast.warning('Buat tanda tangan bawahan sebelum mengajukan timesheet.');
+            toast.warning('Buat tanda tangan Officer sebelum mengajukan timesheet.');
 
             return;
         }
@@ -1342,7 +1479,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             : canDownloadTimesheet;
 
         if (!canDownload) {
-            toast.warning('Timesheet belum bisa diunduh sebelum semua task disetujui atasan.');
+            toast.warning('Timesheet belum bisa diunduh sebelum semua task disetujui Dept Head.');
 
             return;
         }
@@ -1983,13 +2120,13 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                             <input
                                                 ref={selectAllOsticketRef}
                                                 type="checkbox"
-                                                checked={osticketPreview.tickets.length > 0 && selectedOsticketIds.length === osticketPreview.tickets.length}
+                                                checked={osticketPreview.tickets.some((ticket) => !ticket.already_imported) && osticketPreview.tickets.filter((ticket) => !ticket.already_imported).every((ticket) => selectedOsticketIds.includes(ticket.ticket_id))}
                                                 onChange={toggleAllOsticketTickets}
-                                                disabled={osticketPreview.tickets.length === 0}
+                                                disabled={!osticketPreview.tickets.some((ticket) => !ticket.already_imported)}
                                                 aria-label="Pilih semua ticket"
                                                 className="size-4 accent-[#2d875c]"
                                             />
-                                            Pilih semua
+                                            Pilih semua yang belum ada
                                         </label>
                                         <span className="rounded-full bg-[#eaf6ee] px-2.5 py-1 text-xs font-semibold text-[#236d49]">
                                             {osticketPreview.tickets.length} ticket
@@ -1999,17 +2136,20 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 <div className="max-h-[360px] overflow-y-auto">
                                     {osticketPreview.tickets.length > 0 ? (
                                         osticketPreview.tickets.map((ticket) => (
-                                            <label key={ticket.ticket_id} className="flex cursor-pointer gap-3 border-b border-[#eef3ef] px-4 py-4 last:border-b-0 hover:bg-[#fbfdfb]">
+                                            <label key={ticket.ticket_id} className={`flex gap-3 border-b border-[#eef3ef] px-4 py-4 last:border-b-0 ${ticket.already_imported ? 'cursor-not-allowed bg-[#f8faf8]' : 'cursor-pointer hover:bg-[#fbfdfb]'}`}>
                                                 <input
                                                     type="checkbox"
                                                     checked={selectedOsticketIds.includes(ticket.ticket_id)}
                                                     onChange={() => toggleOsticketTicket(ticket.ticket_id)}
+                                                    disabled={ticket.already_imported}
+                                                    aria-label={`${ticket.already_imported ? 'Sudah ada' : 'Belum ada'} di TaskList: ${ticket.ticket_number}`}
                                                     className="mt-1 size-4 shrink-0 accent-[#2d875c]"
                                                 />
                                                 <span className="min-w-0 flex-1">
                                                     <span className="flex flex-wrap items-center gap-2">
                                                         <span className="text-sm font-semibold text-[#173d30]">#{ticket.ticket_number}</span>
                                                         <span className="rounded-full bg-[#eef6fc] px-2 py-0.5 text-[11px] font-semibold text-[#3f79ad]">{ticket.status_label}</span>
+                                                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${ticket.already_imported ? 'bg-[#edf0ed] text-[#718078]' : 'bg-[#eaf6ee] text-[#28754d]'}`}>{ticket.already_imported ? 'Sudah ada' : 'Belum ada'}</span>
                                                     </span>
                                                     <span className="mt-1 block text-sm font-medium text-[#315847]">{ticket.natural_title || ticket.subject || 'Tanpa subject'}</span>
                                                     {ticket.subject && ticket.subject !== ticket.natural_title && <span className="mt-1 block text-xs text-[#8aa097]">Subject osTicket: {ticket.subject}</span>}
@@ -2379,6 +2519,94 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     </div>
                 </DialogContent>
             </Dialog>
+            <Dialog
+                open={isSubmissionPreviewOpen}
+                onOpenChange={(open) => {
+                    setIsSubmissionPreviewOpen(open);
+                    if (!open) {
+                        setSubmissionPreview(null);
+                    }
+                }}
+            >
+                <DialogContent className="flex h-[88vh] max-h-[920px] w-[calc(100%-1rem)] max-w-[1400px] flex-col overflow-hidden border-[#dfeae3] bg-white p-0 sm:max-w-[1400px]">
+                    <DialogHeader className="shrink-0 border-b border-[#eaf1ec] px-6 pt-6 pr-14 pb-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">
+                                    Preview timesheet{submissionPreview ? ` · ${formatMonth(submissionPreview.period)}` : ''}
+                                </DialogTitle>
+                                <DialogDescription className="mt-1 leading-6 text-[#71877b]">
+                                    Pratinjau isi Excel. Status pending atau rejected tetap bisa dilihat; preview tidak mengunduh file.
+                                </DialogDescription>
+                            </div>
+                            {submissionPreview && (
+                                <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${submissionStatusClasses[submissionPreview.status]}`}>
+                                    {submissionStatusLabels[submissionPreview.status]}
+                                </span>
+                            )}
+                        </div>
+                    </DialogHeader>
+                    {isSubmissionPreviewLoading ? (
+                        <div className="grid min-h-0 flex-1 place-items-center text-sm text-[#71877b]">
+                            Memuat preview timesheet...
+                        </div>
+                    ) : submissionPreview ? (
+                        <>
+                            <div className="grid shrink-0 gap-3 border-b border-[#eaf1ec] bg-[#f8faf7] px-6 py-4 sm:grid-cols-2 lg:grid-cols-4">
+                                <div>
+                                    <p className="text-[11px] font-medium text-[#8aa097]">Nama</p>
+                                    <p className="mt-1 text-sm font-semibold text-[#315847]">{submissionPreview.name}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-medium text-[#8aa097]">Departemen</p>
+                                    <p className="mt-1 text-sm font-semibold text-[#315847]">{submissionPreview.department}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-medium text-[#8aa097]">Client</p>
+                                    <p className="mt-1 text-sm font-semibold text-[#315847]">{submissionPreview.client || 'SIM'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-medium text-[#8aa097]">Approved by</p>
+                                    <p className="mt-1 text-sm font-semibold text-[#315847]">
+                                        {submissionPreview.approved_by}
+                                        {submissionPreview.approved_role ? ` · ${submissionPreview.approved_role}` : ''}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+                                <div className="overflow-hidden rounded-xl border border-[#dfeae3]">
+                                    <Table className="min-w-[1050px] text-left">
+                                        <TableHeader className="sticky top-0 z-10 bg-[#f8faf7] text-[11px] text-[#71877b]">
+                                            <TableRow>
+                                                <TableHead>Tanggal</TableHead>
+                                                <TableHead>Mulai</TableHead>
+                                                <TableHead>Selesai</TableHead>
+                                                <TableHead>Jam kerja</TableHead>
+                                                <TableHead>Lembur</TableHead>
+                                                <TableHead className="w-[52%]">Kegiatan / Deskripsi</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {submissionPreview.rows.map((row) => (
+                                                <TableRow key={row.date} className={row.is_non_working_day ? 'bg-[#fffaf2]' : 'bg-white'}>
+                                                    <TableCell className="whitespace-nowrap text-xs font-medium text-[#315847]">{row.date}</TableCell>
+                                                    <TableCell className="text-xs text-[#557067]">{row.start_time ?? '—'}</TableCell>
+                                                    <TableCell className="text-xs text-[#557067]">{row.end_time ?? '—'}</TableCell>
+                                                    <TableCell className="text-xs text-[#557067]">{row.work_hours ?? '—'}</TableCell>
+                                                    <TableCell className="text-xs text-[#557067]">{row.overtime_hours ?? '—'}</TableCell>
+                                                    <TableCell className="whitespace-pre-line break-words text-xs leading-5 text-[#557067]">
+                                                        {row.activities || '—'}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        </>
+                    ) : null}
+                </DialogContent>
+            </Dialog>
             <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
                 <DialogContent className="max-h-[90vh] overflow-y-auto border-[#dfeae3] bg-white sm:max-w-[720px]">
                     <DialogHeader className="border-b border-[#eaf1ec] pb-4">
@@ -2423,7 +2651,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     onChange={(event) => setApprovedBy(event.target.value)}
                                     readOnly={usesSupervisorApproval}
                                     required
-                                    placeholder={usesSupervisorApproval ? 'Atasan belum tersedia' : 'Nama approver'}
+                                    placeholder={usesSupervisorApproval ? 'Dept Head belum tersedia' : 'Nama approver'}
                                     className={`h-11 rounded-xl ${usesSupervisorApproval ? 'bg-[#f8faf7] text-[#71877b]' : ''}`}
                                 />
                             </div>
@@ -2436,7 +2664,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     value={approvedRole}
                                     onChange={(event) => setApprovedRole(event.target.value)}
                                     readOnly={usesSupervisorApproval}
-                                    placeholder={usesSupervisorApproval ? 'Atasan' : 'Contoh: Dept Head IT Apps'}
+                                    placeholder={usesSupervisorApproval ? 'Dept Head' : 'Contoh: Dept Head IT Apps'}
                                     className={`h-11 rounded-xl ${usesSupervisorApproval ? 'bg-[#f8faf7] text-[#71877b]' : ''}`}
                                 />
                             </div>
@@ -2458,7 +2686,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="export-client">{usesSupervisorApproval ? 'Atasan' : 'Client'}</Label>
+                                <Label htmlFor="export-client">{usesSupervisorApproval ? 'Dept Head' : 'Client'}</Label>
                                 <Input
                                     id="export-client"
                                     value={client}
@@ -2486,7 +2714,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         </div>
                         {usesSupervisorApproval && (
                             <div className="rounded-xl border border-[#d9e9df] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#71877b]">
-                                Data atasan diambil otomatis dari relasi akun. Download timesheet hanya tersedia setelah semua task pada periode ini disetujui atasan.
+                                Data Dept Head diambil otomatis dari relasi akun. Download timesheet hanya tersedia setelah semua task pada periode ini disetujui Dept Head.
                             </div>
                         )}
                         {selectedSubmissionForExport === null && !hasExistingSubmission && (
@@ -2528,7 +2756,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         )}
                         {selectedSubmissionForExport !== null && !selectedSubmissionForExport.has_signature && (
                             <div className="rounded-xl border border-[#ecd9a4] bg-[#fffaf0] px-4 py-4 text-sm leading-6 text-[#8a681f]">
-                                Tanda tangan bawahan belum tersimpan pada pengajuan lama ini. Pengajuan tidak dapat di-download dengan meminta tanda tangan kedua; buat pengajuan baru agar tanda tangan tersimpan dengan benar.
+                                Tanda tangan Officer belum tersimpan pada pengajuan lama ini. Pengajuan tidak dapat di-download dengan meminta tanda tangan kedua; buat pengajuan baru agar tanda tangan tersimpan dengan benar.
                             </div>
                         )}
                         <DialogFooter className="border-t border-[#eaf1ec] pt-4">
@@ -2596,7 +2824,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             Konfirmasi timesheet
                             </DialogTitle>
                             <DialogDescription className="leading-6 text-[#71877b]">
-                            Data pengajuan tersimpan. Tanda tangan atasan diambil dari approval task.
+                            Data pengajuan tersimpan. Tanda tangan Dept Head diambil dari approval task.
                             </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={downloadExport} className="grid gap-5">
@@ -2664,11 +2892,11 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </div>
                         </div>
                         <div className="rounded-xl border border-[#d9e9df] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#71877b]">
-                            Tanda tangan bawahan sudah tersimpan pada data pengajuan. Tanda tangan atasan akan ditambahkan dari hasil approval.
+                            Tanda tangan Officer sudah tersimpan pada data pengajuan. Tanda tangan Dept Head akan ditambahkan dari hasil approval.
                         </div>
                         {usesSupervisorApproval && !canDownloadTimesheet && (
                             <div className="rounded-xl border border-[#ecd9a4] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#8a681f]">
-                                Download terkunci sampai semua task pada periode {period.slice(0, 7)} disetujui atasan.
+                                Download terkunci sampai semua task pada periode {period.slice(0, 7)} disetujui Dept Head.
                             </div>
                         )}
                         <DialogFooter className="border-t border-[#eaf1ec] pt-4">

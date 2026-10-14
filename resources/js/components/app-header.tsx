@@ -46,7 +46,7 @@ import { index as adminUsers } from '@/routes/admin/users';
 import { edit as siteSettingsEdit } from '@/routes/site-settings';
 import { index as tasksIndex } from '@/routes/tasks';
 import { index as reviewsIndex } from '@/routes/reviews';
-import { read as readNotification } from '@/routes/notifications';
+import { read as readNotification, readAll as readAllNotifications } from '@/routes/notifications';
 import { search as globalSearch } from '@/routes';
 import type { NotificationItem, SiteSettings, User } from '@/types';
 
@@ -191,6 +191,16 @@ export function AppHeader(_props: Props) {
             preserveScroll: true,
             preserveState: true,
             onSuccess: () => router.visit(notification.href),
+            onError: () => setVisibleNotifications((items) => [notification, ...items]),
+        });
+    }
+
+    function markAllNotificationsRead(): void {
+        setVisibleNotifications([]);
+        router.patch(readAllNotifications().url, {}, {
+            preserveScroll: true,
+            preserveState: true,
+            onError: () => setVisibleNotifications(notifications),
         });
     }
     const navItems = [
@@ -220,7 +230,7 @@ export function AppHeader(_props: Props) {
         ...(auth.user?.role === 'atasan'
             ? [
                   {
-                      title: 'Review Bawahan',
+                      title: 'Review Officer',
                       icon: ListTodo,
                       href: reviewsIndex(),
                       path: reviewsIndex.url(),
@@ -403,7 +413,7 @@ export function AppHeader(_props: Props) {
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="right" className="w-[min(100vw,400px)] border-[#e4eee9] bg-white sm:max-w-[400px]">
-                            <SheetHeader className="border-b border-[#eaf1ec] px-5 pb-4">
+                            <SheetHeader className="border-b border-[#eaf1ec] px-5 pr-16 pb-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <SheetTitle className="text-left text-[#173d30]">Notifikasi</SheetTitle>
@@ -413,6 +423,16 @@ export function AppHeader(_props: Props) {
                                         {visibleNotifications.length}
                                     </span>
                                 </div>
+                                {visibleNotifications.length > 0 && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={markAllNotificationsRead}
+                                        className="mt-3 h-8 rounded-lg px-2 text-xs font-semibold text-[#28754d] hover:bg-[#eaf6ee]"
+                                    >
+                                        Baca semua
+                                    </Button>
+                                )}
                             </SheetHeader>
                             <div className="flex-1 overflow-y-auto px-3 py-4">
                                 {visibleNotifications.length > 0 ? (
@@ -421,13 +441,14 @@ export function AppHeader(_props: Props) {
                                             key={notification.id}
                                             type="button"
                                             onClick={() => markNotificationRead(notification)}
-                                            className="flex w-full gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[#f5faf6]"
+                                            className="mb-1 flex w-full gap-3 rounded-xl bg-[#f0f8f3] px-3 py-3 text-left transition-colors hover:bg-[#e7f3eb]"
                                         >
                                             <span className="mt-0.5 shrink-0">{notificationIcon(notification.type)}</span>
                                             <span className="min-w-0">
-                                                <span className="block text-xs font-semibold text-[#173d30]">{notification.title}</span>
-                                                <span className="mt-1 block text-[11px] leading-5 text-[#71877b]">{notification.message}</span>
+                                                <span className="block text-xs font-bold text-[#173d30]">{notification.title}</span>
+                                                <span className="mt-1 block text-[11px] font-medium leading-5 text-[#557067]">{notification.message}</span>
                                             </span>
+                                            <span className="mt-1.5 size-2 shrink-0 rounded-full bg-[#2d875c]" aria-label="Belum dibaca" />
                                         </button>
                                     ))
                                 ) : (
@@ -458,7 +479,7 @@ export function AppHeader(_props: Props) {
                                         {auth.user?.name ?? 'Pengguna'}
                                     </span>
                                     <span className="block text-[10px] text-[#8aa097]">
-                                        {auth.user?.role === 'admin' ? 'Administrator' : auth.user?.role === 'atasan' ? 'Atasan' : 'Bawahan'}
+                                        {auth.user?.role === 'admin' ? 'Administrator' : auth.user?.role === 'atasan' ? 'Dept Head' : 'Officer'}
                                     </span>
                                 </span>
                                 <ChevronDown className="hidden size-4 text-[#557067] xl:block" />

@@ -22,13 +22,13 @@ class TimesheetExportController extends Controller
 
         if ($options['signature_data'] === null) {
             return response()->json([
-                'message' => 'Tanda tangan bawahan belum tersimpan. Ajukan ulang timesheet dengan tanda tangan.',
+                'message' => 'Tanda tangan Officer belum tersimpan. Ajukan ulang timesheet dengan tanda tangan.',
             ], 422);
         }
 
         if ($user->isBawahan() && ! $service->canExportForPeriod($user, $options['period'])) {
             return response()->json([
-                'message' => 'Timesheet belum bisa diunduh. Semua task pada periode ini harus disetujui atasan.',
+                'message' => 'Timesheet belum bisa diunduh. Semua task pada periode ini harus disetujui Dept Head.',
             ], 422);
         }
 
@@ -38,7 +38,7 @@ class TimesheetExportController extends Controller
 
             if ($supervisorSignature === null) {
                 return response()->json([
-                    'message' => 'Timesheet belum bisa diunduh. Belum ada tanda tangan atasan pada periode ini.',
+                    'message' => 'Timesheet belum bisa diunduh. Belum ada tanda tangan Dept Head pada periode ini.',
                 ], 422);
             }
 

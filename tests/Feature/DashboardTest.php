@@ -2,6 +2,7 @@
 
 use App\Models\CalendarEvent;
 use App\Models\Task;
+use App\Models\TaskReview;
 use App\Models\User;
 
 test('guests are redirected to the login page', function () {
@@ -77,4 +78,81 @@ test('supervisor dashboard only includes supervisor owned tasks', function () {
             ->where('stats.completed', 0)
             ->where('recentTasks.0.id', $ownedTask->id)
             ->missing('recentTasks.1'));
+});
+
+test('officer dashboard shows timesheet status and returned tasks only', function () {
+    $supervisor = User::factory()->atasan()->create();
+    $officer = User::factory()->create(['supervisor_id' => $supervisor->id]);
+    $task = Task::factory()->for($officer)->create(['status' => 'in_progress']);
+    TaskReview::factory()->create([
+        'task_id' => $task->id,
+        'submitted_by' => $officer->id,
+        'reviewer_id' => $supervisor->id,
+        'status' => 'rejected',
+        'note' => 'Lengkapi detail',
+    ]);
+
+    $this->actingAs($officer)
+        ->get(route('dashboard'))
+        ->assertInertia(fn ($page) => $page
+            ->where('view', 'officer')
+            ->where('officer.timesheet.status', 'not_submitted')
+            ->where('officer.returned_tasks.0.note', 'Lengkapi detail')
+            ->where('team', null)
+            ->where('system', null));
+});
+
+test('dept head dashboard only aggregates own officers', function () {
+    $deptHead = User::factory()->atasan()->create();
+    $officer = User::factory()->create(['supervisor_id' => $deptHead->id]);
+    $outsider = User::factory()->create(['supervisor_id' => User::factory()->atasan()->create()->id]);
+    $task = Task::factory()->for($officer)->create(['status' => 'review', 'due_date' => now()->subDay()]);
+    Task::factory()->for($outsider)->create(['status' => 'review', 'due_date' => now()->subDay()]);
+    TaskReview::factory()->create([
+        'task_id' => $task->id,
+        'submitted_by' => $officer->id,
+        'reviewer_id' => $deptHead->id,
+        'status' => 'pending',
+    ]);
+
+    $this->actingAs($deptHead)
+        ->get(route('dashboard'))
+        ->assertInertia(fn ($page) => $page
+            ->where('view', 'dept_head')
+            ->where('team.stats.members', 1)
+            ->where('team.stats.pending_reviews', 1)
+            ->where('team.stats.overdue', 1)
+            ->where('team.status_counts.review', 1)
+            ->where('team.members.0.id', $officer->id)
+            ->where('officer', null)
+            ->where('system', null));
+});
+
+test('admin dashboard lists upcoming birthdays and account warnings', function () {
+    $admin = User::factory()->admin()->create();
+    User::factory()->create([
+        'name' => 'Ulang Tahun Hari Ini',
+        'birth_date' => now()->subYears(30)->toDateString(),
+    ]);
+    User::factory()->create([
+        'name' => 'Ulang Tahun Minggu Depan',
+        'birth_date' => now()->addDays(7)->subYears(25)->toDateString(),
+    ]);
+    User::factory()->create([
+        'name' => 'Ulang Tahun Jauh',
+        'birth_date' => now()->addDays(120)->subYears(25)->toDateString(),
+    ]);
+    User::factory()->create(['supervisor_id' => null]);
+
+    $this->actingAs($admin)
+        ->get(route('dashboard'))
+        ->assertInertia(fn ($page) => $page
+            ->where('view', 'admin')
+            ->has('system.birthdays', 2)
+            ->where('system.birthdays.0.name', 'Ulang Tahun Hari Ini')
+            ->where('system.birthdays.0.days_until', 0)
+            ->where('system.birthdays.0.turning', 30)
+            ->where('system.birthdays.1.days_until', 7)
+            ->where('system.attention.officers_without_supervisor', 4)
+            ->where('team', null));
 });

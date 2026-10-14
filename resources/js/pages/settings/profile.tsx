@@ -22,8 +22,8 @@ type PageProps = {
 
 const roleLabels: Record<Auth['user']['role'], string> = {
     admin: 'Administrator',
-    atasan: 'Atasan',
-    bawahan: 'Bawahan',
+    atasan: 'Dept Head',
+    bawahan: 'Officer',
 };
 
 export default function Profile() {

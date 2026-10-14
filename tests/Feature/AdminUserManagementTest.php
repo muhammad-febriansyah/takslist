@@ -133,3 +133,24 @@ it('prevents bulk deletion of the current admin account', function () {
 
     $this->assertModelExists($admin);
 });
+
+it('lets admins save and validate a user birth date', function () {
+    $admin = User::factory()->admin()->create();
+    $user = User::factory()->atasan()->create();
+    $payload = [
+        'name' => $user->name,
+        'email' => $user->email,
+        'role' => 'atasan',
+        'is_active' => true,
+    ];
+
+    $this->actingAs($admin)
+        ->put(route('admin.users.update', $user), [...$payload, 'birth_date' => '1990-05-04'])
+        ->assertSessionHasNoErrors();
+
+    expect($user->fresh()->birth_date->toDateString())->toBe('1990-05-04');
+
+    $this->actingAs($admin)
+        ->put(route('admin.users.update', $user), [...$payload, 'birth_date' => now()->addDay()->toDateString()])
+        ->assertSessionHasErrors('birth_date');
+});

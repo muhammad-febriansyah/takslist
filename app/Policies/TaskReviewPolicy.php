@@ -46,7 +46,7 @@ class TaskReviewPolicy
      */
     public function delete(User $user, TaskReview $taskReview): bool
     {
-        return false;
+        return $user->isAtasan() && $taskReview->reviewer_id === $user->id;
     }
 
     /**

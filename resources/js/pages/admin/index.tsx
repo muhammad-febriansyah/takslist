@@ -34,7 +34,7 @@ type Props = {
     recentTasks: RecentTask[];
 };
 
-const roleLabels = { admin: 'Admin', atasan: 'Atasan', bawahan: 'Bawahan' } as const;
+const roleLabels = { admin: 'Admin', atasan: 'Dept Head', bawahan: 'Officer' } as const;
 const statusLabels: Record<string, string> = { todo: 'To do', in_progress: 'In progress', review: 'Review', done: 'Selesai' };
 const priorityLabels: Record<string, string> = { low: 'Rendah', medium: 'Sedang', high: 'Tinggi' };
 
@@ -107,7 +107,7 @@ export default function AdminMonitoring({ metrics, statusCounts, users, recentTa
 
                     <div className="rounded-3xl border border-[#e8f0eb] bg-white p-5 shadow-none sm:p-7">
                         <div className="mb-6">
-                            <h2 className="text-lg font-semibold tracking-[-0.03em] text-[#173d30]">Pengguna dan atasan</h2>
+                            <h2 className="text-lg font-semibold tracking-[-0.03em] text-[#173d30]">Pengguna dan Dept Head</h2>
                             <p className="mt-1 text-xs text-[#8aa097]">Struktur akses aktif</p>
                         </div>
                         <div className="space-y-3">
@@ -115,7 +115,7 @@ export default function AdminMonitoring({ metrics, statusCounts, users, recentTa
                                 <div key={user.id} className="flex items-center justify-between gap-3 rounded-2xl bg-[#f7faf8] px-3 py-3">
                                     <div className="min-w-0">
                                         <p className="truncate text-sm font-semibold text-[#244a3a]">{user.name}</p>
-                                        <p className="truncate text-xs text-[#91a49b]">{user.supervisor ? 'Atasan: ' + user.supervisor.name : user.email}</p>
+                                        <p className="truncate text-xs text-[#91a49b]">{user.supervisor ? 'Dept Head: ' + user.supervisor.name : user.email}</p>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-2">
                                         <Badge className="rounded-full border-0 bg-[#e8f4ec] text-[10px] text-[#32724e]">{roleLabels[user.role]}</Badge>

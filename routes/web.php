@@ -32,6 +32,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('reviews/submit-period', [TaskReviewController::class, 'storeForPeriod'])->name('reviews.submit-period');
     Route::post('reviews/bulk-approve', [TaskReviewController::class, 'bulkApprove'])->name('reviews.bulk-approve');
     Route::get('reviews/{review}/signature', [TaskReviewController::class, 'signature'])->name('reviews.signature');
+    Route::delete('reviews/{review}/submission', [TaskReviewController::class, 'destroySubmission'])->name('reviews.submission.destroy');
 
     Route::patch('tasks/reorder', TaskReorderController::class)->name('tasks.reorder');
     Route::delete('tasks/bulk', BulkDeleteTasksController::class)->name('tasks.bulk-destroy');
@@ -42,7 +43,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('tasks/{task}/review', [TaskReviewController::class, 'store'])->name('tasks.review.store');
     Route::patch('reviews/{review}', [TaskReviewController::class, 'update'])->name('reviews.update');
     Route::post('tasks/export/timesheet', TimesheetExportController::class)->name('tasks.export.timesheet');
+    Route::get('tasks/timesheet-submissions/{submission}/preview', [TimesheetSubmissionController::class, 'preview'])->name('tasks.timesheet-submissions.preview');
     Route::post('tasks/timesheet-submissions', [TimesheetSubmissionController::class, 'store'])->name('tasks.timesheet-submissions.store');
+    Route::patch('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::patch('notifications/{notification}/read', NotificationController::class)->name('notifications.read');
 
     Route::get('calendar', [CalendarController::class, 'index'])->name('calendar.index');

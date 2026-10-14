@@ -22,6 +22,7 @@ use Laravel\Fortify\PasskeyAuthenticatable;
  * @property string|null $avatar
  * @property string $role
  * @property string|null $position
+ * @property Carbon|null $birth_date
  * @property int|null $supervisor_id
  * @property bool $is_active
  * @property Carbon|null $email_verified_at
@@ -33,7 +34,7 @@ use Laravel\Fortify\PasskeyAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'avatar', 'role', 'position', 'supervisor_id', 'is_active'])]
+#[Fillable(['name', 'email', 'password', 'avatar', 'role', 'position', 'birth_date', 'supervisor_id', 'is_active'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -51,6 +52,7 @@ class User extends Authenticatable implements PasskeyUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'birth_date' => 'date',
         ];
     }
 

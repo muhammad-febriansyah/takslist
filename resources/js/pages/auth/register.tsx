@@ -79,7 +79,7 @@ export default function Register({ passwordRules, supervisors }: Props) {
 
                             <div className="grid gap-2">
                                 <Label htmlFor="supervisor_id" className="text-sm font-medium text-[#113524]">
-                                    Atasan <span className="text-[#d44f4f]">*</span>
+                                    Dept Head <span className="text-[#d44f4f]">*</span>
                                 </Label>
                                 <SearchableSelect
                                     value={supervisorId}
@@ -90,7 +90,7 @@ export default function Register({ passwordRules, supervisors }: Props) {
                                         description: supervisor.position,
                                     }))}
                                     placeholder="Pilih atasan"
-                                    searchPlaceholder="Cari nama atasan..."
+                                    searchPlaceholder="Cari nama Dept Head..."
                                     aria-label="Pilih atasan"
                                     disabled={!supervisors.length}
                                 />
