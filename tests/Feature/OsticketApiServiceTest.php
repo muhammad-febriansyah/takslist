@@ -100,3 +100,41 @@ it('marks tickets already imported in the osTicket preview', function (): void {
         ->assertJsonPath('tickets.0.already_imported', true)
         ->assertJsonPath('tickets.1.already_imported', false);
 });
+
+it('stores the osTicket subject when importing tickets as tasks', function (): void {
+    config()->set([
+        'osticket.enabled' => true,
+        'osticket.source' => 'api',
+        'osticket.api_url' => 'https://ticketing.example.com/taskflow-api.php',
+        'osticket.api_token' => 'test-api-key',
+    ]);
+
+    Http::fake([
+        'https://ticketing.example.com/taskflow-api.php*' => Http::response([
+            'configured' => true,
+            'user_name' => 'Bawahan TaskFlow',
+            'matched_staff' => ['staff_id' => 7, 'name' => 'Bawahan TaskFlow', 'score' => 100],
+            'candidates' => [],
+            'tickets' => [[
+                'ticket_id' => 1047,
+                'ticket_number' => '608930',
+                'status' => 'open',
+                'status_label' => 'Open',
+                'subject' => '  Gallery   SIM  ',
+                'description' => 'Perbaiki koneksi gallery.',
+                'assigned_to' => 'Bawahan TaskFlow',
+                'created_at' => '2026-09-22 10:30:00',
+            ]],
+        ]),
+    ]);
+
+    $user = User::factory()->create(['name' => 'Bawahan TaskFlow']);
+
+    $this->actingAs($user)
+        ->post(route('tasks.osticket.import'), ['period' => '2026-09', 'ticket_ids' => [1047]])
+        ->assertRedirect(route('tasks.index'));
+
+    expect(Task::query()->where('external_ticket_id', 1047)->first())
+        ->external_ticket_number->toBe('608930')
+        ->external_ticket_subject->toBe('Gallery SIM');
+});

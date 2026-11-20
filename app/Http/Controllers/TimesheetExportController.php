@@ -26,26 +26,17 @@ class TimesheetExportController extends Controller
             ], 422);
         }
 
-        if ($user->isBawahan() && ! $service->canExportForPeriod($user, $options['period'])) {
-            return response()->json([
-                'message' => 'Timesheet belum bisa diunduh. Semua task pada periode ini harus disetujui Dept Head.',
-            ], 422);
-        }
-
         if ($user->isBawahan()) {
             $user->loadMissing('supervisor:id,name,position');
-            $supervisorSignature = $service->signatureDataForPeriod($user, $options['period']);
-
-            if ($supervisorSignature === null) {
-                return response()->json([
-                    'message' => 'Timesheet belum bisa diunduh. Belum ada tanda tangan Dept Head pada periode ini.',
-                ], 422);
-            }
-
-            $options['supervisor_signature_data'] = $supervisorSignature;
+            $options['supervisor_signature_data'] = $service->signatureDataForPeriod($user, $options['period']);
             $options['approved_by'] = $user->supervisor?->name ?? $options['approved_by'];
-            $options['approved_role'] = $user->supervisor?->position ?? $options['approved_role'];
+            $options['approved_role'] = $user->supervisor?->position ?? $options['approved_role'] ?? null;
         }
+
+        $options['edited_rows'] = $user->timesheetSubmissions()
+            ->where('period', $options['period'])
+            ->first(['edited_rows'])
+            ?->edited_rows;
 
         $path = $service->generate($user, $options);
         $period = Str::of($options['period'])->replace('-', '');

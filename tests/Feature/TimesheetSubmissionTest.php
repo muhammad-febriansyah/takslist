@@ -208,3 +208,81 @@ it('shows submission approved when reviewed tasks are approved even if another p
             ->where('timesheet_submissions.data.0.status', 'approved')
             ->where('timesheet_submissions.data.0.can_download', true));
 });
+
+it('saves edited preview rows and uses them in the preview and download', function () use ($signatureData) {
+    Storage::fake('public');
+    $user = User::factory()->create();
+    Task::factory()->for($user)->create([
+        'title' => 'Task dari board',
+        'due_date' => '2026-09-03',
+    ]);
+    Storage::disk('public')->put('signatures/officer.png', base64_decode(substr($signatureData, strlen('data:image/png;base64,'))));
+    $submission = TimesheetSubmission::factory()->for($user)->create([
+        'period' => '2026-09',
+        'signature_path' => 'signatures/officer.png',
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('tasks.timesheet-submissions.update', $submission), [
+            'rows' => [
+                ['day' => 3, 'start_time' => '09:00', 'end_time' => '20:00', 'activities' => 'Kegiatan hasil edit'],
+                ['day' => 5, 'start_time' => null, 'end_time' => null, 'activities' => 'Lembur akhir pekan'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($user)
+        ->get(route('tasks.timesheet-submissions.preview', $submission))
+        ->assertOk()
+        ->assertJsonPath('is_edited', true)
+        ->assertJsonPath('rows.2.start_time', '09:00')
+        ->assertJsonPath('rows.2.work_hours', 10)
+        ->assertJsonPath('rows.2.overtime_hours', 2)
+        ->assertJsonPath('rows.2.activities', 'Kegiatan hasil edit')
+        ->assertJsonPath('rows.4.activities', 'Lembur akhir pekan')
+        ->assertJsonPath('rows.3.start_time', '08:00');
+
+    $response = $this->actingAs($user)
+        ->post(route('tasks.export.timesheet'), [
+            'department' => 'Product',
+            'client' => 'SIM',
+            'approved_by' => 'Atasan TaskFlow',
+            'period' => '2026-09',
+        ])
+        ->assertOk();
+
+    $zip = new ZipArchive;
+    expect($zip->open($response->baseResponse->getFile()->getPathname()))->toBeTrue();
+    $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+
+    expect($sheet)
+        ->toContain('Kegiatan hasil edit')
+        ->toContain('Lembur akhir pekan')
+        ->not->toContain('Task dari board');
+});
+
+it('rejects edited preview rows that end before they start', function () {
+    $user = User::factory()->create();
+    $submission = TimesheetSubmission::factory()->for($user)->create();
+
+    $this->actingAs($user)
+        ->patch(route('tasks.timesheet-submissions.update', $submission), [
+            'rows' => [['day' => 3, 'start_time' => '17:00', 'end_time' => '08:00', 'activities' => 'Salah jam']],
+        ])
+        ->assertSessionHasErrors(['rows.0.end_time' => 'Jam selesai harus setelah jam mulai.']);
+
+    expect($submission->refresh()->edited_rows)->toBeNull();
+});
+
+it('does not allow editing another users timesheet submission', function () {
+    $submission = TimesheetSubmission::factory()->create();
+
+    $this->actingAs(User::factory()->create())
+        ->patch(route('tasks.timesheet-submissions.update', $submission), [
+            'rows' => [['day' => 3, 'start_time' => '08:00', 'end_time' => '17:00', 'activities' => 'Diubah']],
+        ])
+        ->assertForbidden();
+
+    expect($submission->refresh()->edited_rows)->toBeNull();
+});

@@ -22,6 +22,7 @@ import {
     Pencil,
     PenLine,
     Plus,
+    Save,
     Search,
     SlidersHorizontal,
     SquareKanban,
@@ -66,6 +67,7 @@ import { timesheet as exportTimesheet } from '@/routes/tasks/export';
 import {
     preview as previewTimesheetSubmission,
     store as storeTimesheetSubmission,
+    update as updateTimesheetSubmission,
 } from '@/routes/tasks/timesheet-submissions';
 import osticketRoutes from '@/routes/tasks/osticket';
 
@@ -137,16 +139,32 @@ type TimesheetPreviewData = {
     client: string | null;
     approved_by: string;
     approved_role: string | null;
-    rows: Array<{
-        date: string;
-        is_non_working_day: boolean;
-        start_time: string | null;
-        end_time: string | null;
-        work_hours: number | null;
-        overtime_hours: number | null;
-        activities: string;
-    }>;
+    is_edited: boolean;
+    rows: TimesheetPreviewRow[];
 };
+
+type TimesheetPreviewRow = {
+    day: number;
+    date: string;
+    is_non_working_day: boolean;
+    start_time: string | null;
+    end_time: string | null;
+    work_hours: number | null;
+    overtime_hours: number | null;
+    activities: string;
+};
+
+function timesheetWorkHours(startTime: string | null, endTime: string | null): number | null {
+    if (!startTime || !endTime) {
+        return null;
+    }
+
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+    const minutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+
+    return Math.round((minutes / 60 - 1) * 100) / 100;
+}
 
 type OsticketTicket = {
     ticket_id: number;
@@ -477,7 +495,7 @@ function TaskCard({
 export default function Tasks({ tasks, search: initialSearch = '', user_id: initialUserId = null, period: initialPeriod = getTodayValue().slice(0, 7), users = [], export_approver: exportApprover = null, submission_search: initialSubmissionSearch = '', submission_status: initialSubmissionStatus = '', timesheet_submission_periods: submittedPeriods = [], timesheet_submissions: timesheetSubmissions = { data: [], current_page: 1, last_page: 1, from: null, to: null, total: 0 } }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const canManageTasks = auth.user.role !== 'admin';
-    const canViewSubmissions = auth.user.role !== 'atasan';
+    const canViewSubmissions = auth.user.role === 'bawahan';
     const usesSupervisorApproval = auth.user.role === 'bawahan';
     const [boardTasks, setBoardTasks] = useState(tasks);
     const [view, setView] = useState<'board' | 'list' | 'submissions'>('board');
@@ -505,6 +523,9 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const [isSubmissionPreviewOpen, setIsSubmissionPreviewOpen] = useState(false);
     const [isSubmissionPreviewLoading, setIsSubmissionPreviewLoading] = useState(false);
     const [submissionPreview, setSubmissionPreview] = useState<TimesheetPreviewData | null>(null);
+    const [submissionPreviewSource, setSubmissionPreviewSource] = useState<TimesheetSubmission | null>(null);
+    const [isSubmissionPreviewDirty, setIsSubmissionPreviewDirty] = useState(false);
+    const [isSavingSubmissionPreview, setIsSavingSubmissionPreview] = useState(false);
     const [isDuplicateSubmissionDialogOpen, setIsDuplicateSubmissionDialogOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [selectedSubmissionForExport, setSelectedSubmissionForExport] = useState<TimesheetSubmission | null>(null);
@@ -876,11 +897,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     const previewTasks = boardTasks.filter((task) =>
         task.due_date?.startsWith(period.slice(0, 7)),
     );
-    const canDownloadTimesheet = selectedSubmissionForExport !== null
-        ? selectedSubmissionForExport.can_download && selectedSubmissionForExport.has_signature
-        : !usesSupervisorApproval
-            || (previewTasks.length > 0
-                && previewTasks.every((task) => task.review?.status === 'approved' && task.review.signature_url));
+    const canDownloadTimesheet = selectedSubmissionForExport === null || selectedSubmissionForExport.has_signature;
     const selectedPeriodKey = period.slice(0, 7);
     const hasExistingSubmission = selectedSubmissionForExport === null
         && submittedPeriods.includes(selectedPeriodKey);
@@ -949,6 +966,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
 
     async function openSubmissionPreview(submission: TimesheetSubmission): Promise<void> {
         setSubmissionPreview(null);
+        setSubmissionPreviewSource(submission);
+        setIsSubmissionPreviewDirty(false);
         setIsSubmissionPreviewOpen(true);
         setIsSubmissionPreviewLoading(true);
 
@@ -973,6 +992,52 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
         } finally {
             setIsSubmissionPreviewLoading(false);
         }
+    }
+
+    function updateSubmissionPreviewRow(day: number, changes: Partial<Pick<TimesheetPreviewRow, 'start_time' | 'end_time' | 'activities'>>): void {
+        setSubmissionPreview((preview) => preview === null ? preview : {
+            ...preview,
+            rows: preview.rows.map((row) => {
+                if (row.day !== day) {
+                    return row;
+                }
+
+                const updatedRow = { ...row, ...changes };
+                const workHours = timesheetWorkHours(updatedRow.start_time, updatedRow.end_time);
+
+                return {
+                    ...updatedRow,
+                    work_hours: workHours,
+                    overtime_hours: workHours === null ? null : Math.max(0, Math.round((workHours - 8) * 100) / 100),
+                };
+            }),
+        });
+        setIsSubmissionPreviewDirty(true);
+    }
+
+    function saveSubmissionPreview(): void {
+        if (submissionPreview === null || submissionPreviewSource === null) {
+            return;
+        }
+
+        setIsSavingSubmissionPreview(true);
+        router.patch(updateTimesheetSubmission.url(submissionPreviewSource.id), {
+            rows: submissionPreview.rows.map((row) => ({
+                day: row.day,
+                start_time: row.start_time || null,
+                end_time: row.end_time || null,
+                activities: row.activities,
+            })),
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                setIsSubmissionPreviewDirty(false);
+                setSubmissionPreview((preview) => preview === null ? preview : { ...preview, is_edited: true });
+            },
+            onError: (errors) => toast.error(Object.values(errors)[0] ?? 'Perubahan preview gagal disimpan.'),
+            onFinish: () => setIsSavingSubmissionPreview(false),
+        });
     }
 
     function openNewTimesheetSubmission(): void {
@@ -1479,7 +1544,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
             : canDownloadTimesheet;
 
         if (!canDownload) {
-            toast.warning('Timesheet belum bisa diunduh sebelum semua task disetujui Dept Head.');
+            toast.warning('Tanda tangan Officer belum tersimpan pada pengajuan ini.');
 
             return;
         }
@@ -1592,6 +1657,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             <button
                                 type="button"
                                 onClick={openNewTimesheetSubmission}
+                                hidden={!canViewSubmissions}
                                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#cfe2d5] bg-white px-4 text-sm font-semibold text-[#236d49] shadow-none transition hover:border-[#9fc9ad] hover:bg-[#f5fbf6]"
                             >
                                 <Download className="size-4" />
@@ -2525,6 +2591,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     setIsSubmissionPreviewOpen(open);
                     if (!open) {
                         setSubmissionPreview(null);
+                        setSubmissionPreviewSource(null);
+                        setIsSubmissionPreviewDirty(false);
                     }
                 }}
             >
@@ -2536,7 +2604,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     Preview timesheet{submissionPreview ? ` · ${formatMonth(submissionPreview.period)}` : ''}
                                 </DialogTitle>
                                 <DialogDescription className="mt-1 leading-6 text-[#71877b]">
-                                    Pratinjau isi Excel. Status pending atau rejected tetap bisa dilihat; preview tidak mengunduh file.
+                                    Pratinjau isi Excel. Jam dan kegiatan bisa diedit; simpan perubahan agar dipakai saat download.
                                 </DialogDescription>
                             </div>
                             {submissionPreview && (
@@ -2588,19 +2656,72 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                         </TableHeader>
                                         <TableBody>
                                             {submissionPreview.rows.map((row) => (
-                                                <TableRow key={row.date} className={row.is_non_working_day ? 'bg-[#fffaf2]' : 'bg-white'}>
-                                                    <TableCell className="whitespace-nowrap text-xs font-medium text-[#315847]">{row.date}</TableCell>
-                                                    <TableCell className="text-xs text-[#557067]">{row.start_time ?? '—'}</TableCell>
-                                                    <TableCell className="text-xs text-[#557067]">{row.end_time ?? '—'}</TableCell>
-                                                    <TableCell className="text-xs text-[#557067]">{row.work_hours ?? '—'}</TableCell>
-                                                    <TableCell className="text-xs text-[#557067]">{row.overtime_hours ?? '—'}</TableCell>
-                                                    <TableCell className="whitespace-pre-line break-words text-xs leading-5 text-[#557067]">
-                                                        {row.activities || '—'}
+                                                <TableRow key={row.day} className={row.is_non_working_day ? 'bg-[#fffaf2]' : 'bg-white'}>
+                                                    <TableCell className="whitespace-nowrap align-top text-xs font-medium text-[#315847]">{row.date}</TableCell>
+                                                    <TableCell className="align-top">
+                                                        <Input
+                                                            type="time"
+                                                            value={row.start_time ?? ''}
+                                                            onChange={(event) => updateSubmissionPreviewRow(row.day, { start_time: event.target.value || null })}
+                                                            aria-label={`Jam mulai ${row.date}`}
+                                                            className="h-8 w-[104px] rounded-lg px-2 text-xs text-[#557067]"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="align-top">
+                                                        <Input
+                                                            type="time"
+                                                            value={row.end_time ?? ''}
+                                                            onChange={(event) => updateSubmissionPreviewRow(row.day, { end_time: event.target.value || null })}
+                                                            aria-label={`Jam selesai ${row.date}`}
+                                                            className="h-8 w-[104px] rounded-lg px-2 text-xs text-[#557067]"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="align-top text-xs text-[#557067]">{row.work_hours ?? '—'}</TableCell>
+                                                    <TableCell className="align-top text-xs text-[#557067]">{row.overtime_hours ?? '—'}</TableCell>
+                                                    <TableCell className="align-top">
+                                                        <textarea
+                                                            value={row.activities}
+                                                            onChange={(event) => updateSubmissionPreviewRow(row.day, { activities: event.target.value })}
+                                                            rows={Math.min(8, Math.max(2, row.activities.split('\n').length))}
+                                                            placeholder="—"
+                                                            aria-label={`Kegiatan ${row.date}`}
+                                                            className="w-full resize-y rounded-lg border border-[#dfeae3] bg-transparent px-2.5 py-1.5 text-xs leading-5 text-[#557067] outline-none focus:border-[#9fc9ad] focus:ring-2 focus:ring-[#2d875c]/15"
+                                                        />
                                                     </TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
                                     </Table>
+                                </div>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#eaf1ec] px-6 py-4">
+                                <p className="text-xs text-[#71877b]">
+                                    {isSubmissionPreviewDirty
+                                        ? 'Ada perubahan yang belum disimpan.'
+                                        : submissionPreview.is_edited
+                                            ? 'Download memakai data preview yang sudah diedit.'
+                                            : 'Download memakai data task periode ini.'}
+                                </p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={isDownloading || isSubmissionPreviewDirty || submissionPreviewSource === null || !submissionPreviewSource.can_download}
+                                        onClick={() => submissionPreviewSource && void downloadExport(undefined, submissionPreviewSource)}
+                                        className="h-10 rounded-xl border-[#cfe2d5] px-4 text-[#236d49]"
+                                    >
+                                        <Download className="size-4" />
+                                        {isDownloading ? 'Menyiapkan...' : 'Download'}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        disabled={!isSubmissionPreviewDirty || isSavingSubmissionPreview}
+                                        onClick={saveSubmissionPreview}
+                                        className="h-10 rounded-xl bg-[#2d875c] px-4 text-white hover:bg-[#236d49]"
+                                    >
+                                        <Save className="size-4" />
+                                        {isSavingSubmissionPreview ? 'Menyimpan...' : 'Simpan perubahan'}
+                                    </Button>
                                 </div>
                             </div>
                         </>
@@ -2714,7 +2835,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         </div>
                         {usesSupervisorApproval && (
                             <div className="rounded-xl border border-[#d9e9df] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#71877b]">
-                                Data Dept Head diambil otomatis dari relasi akun. Download timesheet hanya tersedia setelah semua task pada periode ini disetujui Dept Head.
+                                Data Dept Head diambil otomatis dari relasi akun. Timesheet bisa langsung di-download tanpa menunggu approval.
                             </div>
                         )}
                         {selectedSubmissionForExport === null && !hasExistingSubmission && (
@@ -2725,7 +2846,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                         Tanda tangan pengaju
                                     </Label>
                                     <p className="mt-1 text-xs text-[#71877b]">
-                                        Tanda tangan disimpan bersama pengajuan dan digunakan saat download timesheet approved.
+                                        Tanda tangan disimpan bersama pengajuan dan digunakan saat download timesheet.
                                     </p>
                                 </div>
                                 <Button
@@ -2791,7 +2912,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                         </DialogDescription>
                     </DialogHeader>
                     <div className="rounded-xl border border-[#cfe2d5] bg-[#f3faf5] px-4 py-4 text-sm leading-6 text-[#236d49]">
-                        Buka tab Pengajuan untuk melihat status dan download setelah disetujui. Jika ingin mengajukan bulan lain, pilih periode lain pada form.
+                        Buka tab Pengajuan untuk preview, edit, dan download. Jika ingin mengajukan bulan lain, pilih periode lain pada form.
                     </div>
                     <DialogFooter>
                         <Button
@@ -2824,7 +2945,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             Konfirmasi timesheet
                             </DialogTitle>
                             <DialogDescription className="leading-6 text-[#71877b]">
-                            Data pengajuan tersimpan. Tanda tangan Dept Head diambil dari approval task.
+                            Data pengajuan tersimpan dan siap di-download.
                             </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={downloadExport} className="grid gap-5">
@@ -2892,13 +3013,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                             </div>
                         </div>
                         <div className="rounded-xl border border-[#d9e9df] bg-[#f8faf7] px-4 py-3 text-xs leading-5 text-[#71877b]">
-                            Tanda tangan Officer sudah tersimpan pada data pengajuan. Tanda tangan Dept Head akan ditambahkan dari hasil approval.
+                            Tanda tangan Officer sudah tersimpan pada data pengajuan. Tanda tangan Dept Head ikut ditambahkan jika sudah ada approval.
                         </div>
-                        {usesSupervisorApproval && !canDownloadTimesheet && (
-                            <div className="rounded-xl border border-[#ecd9a4] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#8a681f]">
-                                Download terkunci sampai semua task pada periode {period.slice(0, 7)} disetujui Dept Head.
-                            </div>
-                        )}
                         <DialogFooter className="border-t border-[#eaf1ec] pt-4">
                             <Button
                                 type="button"
@@ -2917,7 +3033,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                 className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"
                             >
                                 <PenLine className="size-4" />
-                                {isDownloading ? 'Menyiapkan...' : usesSupervisorApproval ? (canDownloadTimesheet ? 'Download bertanda tangan atasan' : 'Menunggu approval atasan') : 'Tanda tangan & download'}
+                                {isDownloading ? 'Menyiapkan...' : 'Download timesheet'}
                             </Button>
                         </DialogFooter>
                     </form>

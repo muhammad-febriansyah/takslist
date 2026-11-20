@@ -143,7 +143,7 @@ class TaskController extends Controller
                 'approved_role' => $submission->approved_role,
                 'has_signature' => $submission->signature_path !== null,
                 'submitted_at' => $submission->submitted_at?->toIso8601String(),
-                'can_download' => $submission->status === 'approved',
+                'can_download' => $submission->signature_path !== null,
             ];
         }));
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreTimesheetSubmissionRequest;
+use App\Http\Requests\UpdateTimesheetSubmissionRequest;
 use App\Models\TimesheetSubmission;
 use App\Models\User;
 use App\Notifications\TaskFlowNotification;
@@ -35,8 +36,32 @@ class TimesheetSubmissionController extends Controller
             'client' => $submission->client,
             'approved_by' => $submission->approved_by,
             'approved_role' => $submission->approved_role,
-            ...$service->previewRows($user, $submission->period),
+            'is_edited' => $submission->edited_rows !== null,
+            ...$service->previewRows($user, $submission->period, $submission->edited_rows),
         ]);
+    }
+
+    public function update(UpdateTimesheetSubmissionRequest $request, TimesheetSubmission $submission): RedirectResponse
+    {
+        $submission->update([
+            'edited_rows' => collect($request->validated('rows'))
+                ->map(fn (array $row): array => [
+                    'day' => (int) $row['day'],
+                    'start_time' => $row['start_time'] ?? null,
+                    'end_time' => $row['end_time'] ?? null,
+                    'activities' => trim((string) ($row['activities'] ?? '')),
+                ])
+                ->sortBy('day')
+                ->values()
+                ->all(),
+        ]);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => 'Perubahan preview timesheet tersimpan dan akan dipakai saat download.',
+        ]);
+
+        return back();
     }
 
     public function store(

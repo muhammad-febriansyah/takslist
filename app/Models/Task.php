@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
-#[Fillable(['user_id', 'project_id', 'title', 'description', 'status', 'priority', 'start_date', 'due_date', 'sort_order', 'completed_at', 'external_source', 'external_ticket_id', 'external_ticket_number', 'external_status', 'external_assignee_name'])]
+#[Fillable(['user_id', 'project_id', 'title', 'description', 'status', 'priority', 'start_date', 'due_date', 'sort_order', 'completed_at', 'external_source', 'external_ticket_id', 'external_ticket_number', 'external_ticket_subject', 'external_status', 'external_assignee_name'])]
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */

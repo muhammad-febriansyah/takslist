@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'period', 'status', 'department', 'client', 'approved_by', 'approved_role', 'signature_path', 'submitted_at'])]
+#[Fillable(['user_id', 'period', 'status', 'department', 'client', 'approved_by', 'approved_role', 'signature_path', 'edited_rows', 'submitted_at'])]
 class TimesheetSubmission extends Model
 {
     /** @use HasFactory<TimesheetSubmissionFactory> */
@@ -18,6 +18,7 @@ class TimesheetSubmission extends Model
     {
         return [
             'submitted_at' => 'datetime',
+            'edited_rows' => 'array',
         ];
     }
 

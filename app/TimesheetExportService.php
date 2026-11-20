@@ -28,7 +28,7 @@ class TimesheetExportService
     /**
      * Generate a timesheet workbook from preserved Excel template.
      *
-     * @param  array{department: string, client?: ?string, approved_by: string, approved_role?: ?string, period: string, signature_data: string, supervisor_signature_data?: ?string}  $options
+     * @param  array{department: string, client?: ?string, approved_by: string, approved_role?: ?string, period: string, signature_data: string, supervisor_signature_data?: ?string, edited_rows?: list<array{day: int, start_time: ?string, end_time: ?string, activities: ?string}>|null}  $options
      */
     public function generate(User $user, array $options): string
     {
@@ -38,14 +38,8 @@ class TimesheetExportService
             throw new RuntimeException('Periode timesheet tidak valid.');
         }
 
-        $firstDay = $period->modify('first day of this month');
-        $lastDay = $period->modify('last day of this month');
-        $tasksByDate = $this->tasksForPeriod($user, $firstDay, $lastDay)
-            ->groupBy(fn (Task $task): string => $task->due_date?->format('Y-m-d') ?? '');
-
-        $fromTime = 8 / 24;
-        $toTime = 17 / 24;
-        $workHours = $toTime - $fromTime - (1 / 24);
+        $days = $this->timesheetDays($user, $period, $options['edited_rows'] ?? null);
+        $workHours = 8 / 24;
         $templatePath = resource_path('templates/timesheet-template.xlsx');
 
         if (! is_file($templatePath)) {
@@ -85,14 +79,13 @@ class TimesheetExportService
             $this->setInlineString($sheet, $sheetXPath, 'A48', $user->name);
             $this->setInlineString($sheet, $sheetXPath, 'A49', "({$options['department']})");
             $this->setInlineString($sheet, $sheetXPath, 'G48', $options['approved_by']);
-            $this->setInlineString($sheet, $sheetXPath, 'G49', $options['approved_role'] ? "({$options['approved_role']})" : '');
-
-            $daysInMonth = (int) $lastDay->format('j');
+            $this->setInlineString($sheet, $sheetXPath, 'G49', ($options['approved_role'] ?? null) ? "({$options['approved_role']})" : '');
 
             for ($day = 1; $day <= 31; $day++) {
                 $row = 11 + $day;
+                $timesheetDay = $days[$day - 1] ?? null;
 
-                if ($day > $daysInMonth) {
+                if ($timesheetDay === null) {
                     foreach (['A', 'C', 'D', 'E', 'F', 'G'] as $column) {
                         $this->clearCell($sheetXPath, $column.$row);
                     }
@@ -100,37 +93,31 @@ class TimesheetExportService
                     continue;
                 }
 
-                $date = $firstDay->setDate(
-                    (int) $firstDay->format('Y'),
-                    (int) $firstDay->format('m'),
-                    $day,
-                );
-                $dayTasks = $tasksByDate->get($date->format('Y-m-d'), collect());
-                $description = $dayTasks
-                    ->values()
-                    ->map(fn (Task $task, int $index): string => $this->formatTaskDescription($task, $index + 1))
-                    ->implode("\n\n");
+                $this->setCellNumber($sheet, $sheetXPath, 'A'.$row, $this->excelDateSerial($timesheetDay['date']));
 
-                $this->setCellNumber($sheet, $sheetXPath, 'A'.$row, $this->excelDateSerial($date));
+                $startTime = $this->timeFraction($timesheetDay['start_time']);
+                $endTime = $this->timeFraction($timesheetDay['end_time']);
 
-                if ($this->isRedDate($date)) {
-                    $this->clearCell($sheetXPath, 'C'.$row);
-                    $this->clearCell($sheetXPath, 'D'.$row);
-                    $this->clearCell($sheetXPath, 'E'.$row);
-                    $this->clearCell($sheetXPath, 'F'.$row);
-                    $this->setInlineString($sheet, $sheetXPath, 'G'.$row, $description);
-                    $this->applyRedRowStyles($sheetXPath, $row, $redRowStyles);
-                    $this->setDescriptionRowHeight($sheetXPath, $row, $description);
+                if ($startTime !== null && $endTime !== null) {
+                    $dayWorkHours = $endTime - $startTime - (1 / 24);
 
-                    continue;
+                    $this->setCellNumber($sheet, $sheetXPath, 'C'.$row, $startTime);
+                    $this->setCellNumber($sheet, $sheetXPath, 'D'.$row, $endTime);
+                    $this->setCellFormula($sheet, $sheetXPath, 'E'.$row, "D{$row}-C{$row}-TIME(1,0,0)", $dayWorkHours);
+                    $this->setCellFormula($sheet, $sheetXPath, 'F'.$row, "MAX(0,E{$row}-\$C\$8)", max(0, $dayWorkHours - $workHours));
+                } else {
+                    foreach (['C', 'D', 'E', 'F'] as $column) {
+                        $this->clearCell($sheetXPath, $column.$row);
+                    }
                 }
 
-                $this->setCellNumber($sheet, $sheetXPath, 'C'.$row, $fromTime);
-                $this->setCellNumber($sheet, $sheetXPath, 'D'.$row, $toTime);
-                $this->setCellFormula($sheet, $sheetXPath, 'E'.$row, "D{$row}-C{$row}-TIME(1,0,0)", $workHours);
-                $this->setCellFormula($sheet, $sheetXPath, 'F'.$row, "\$C\$8-C{$row}", 0);
-                $this->setInlineString($sheet, $sheetXPath, 'G'.$row, $description);
-                $this->setDescriptionRowHeight($sheetXPath, $row, $description);
+                $this->setInlineString($sheet, $sheetXPath, 'G'.$row, $timesheetDay['activities']);
+
+                if ($timesheetDay['is_non_working_day']) {
+                    $this->applyRedRowStyles($sheetXPath, $row, $redRowStyles);
+                }
+
+                $this->setDescriptionRowHeight($sheetXPath, $row, $timesheetDay['activities']);
             }
 
             $workbook = $this->loadXml($zip->getFromName('xl/workbook.xml'));
@@ -175,9 +162,10 @@ class TimesheetExportService
     /**
      * Build spreadsheet-shaped data for an in-page preview without creating a workbook.
      *
-     * @return array{rows: list<array{date: string, is_non_working_day: bool, start_time: ?string, end_time: ?string, work_hours: ?int, overtime_hours: ?int, activities: string}>}
+     * @param  list<array{day: int, start_time: ?string, end_time: ?string, activities: ?string}>|null  $editedRows
+     * @return array{rows: list<array{day: int, date: string, is_non_working_day: bool, start_time: ?string, end_time: ?string, work_hours: int|float|null, overtime_hours: int|float|null, activities: string}>}
      */
-    public function previewRows(User $user, string $period): array
+    public function previewRows(User $user, string $period, ?array $editedRows = null): array
     {
         $periodDate = DateTimeImmutable::createFromFormat('!Y-m', $period);
 
@@ -185,11 +173,49 @@ class TimesheetExportService
             throw new RuntimeException('Periode timesheet tidak valid.');
         }
 
+        $rows = [];
+
+        foreach ($this->timesheetDays($user, $periodDate, $editedRows) as $timesheetDay) {
+            $startTime = $this->timeFraction($timesheetDay['start_time']);
+            $endTime = $this->timeFraction($timesheetDay['end_time']);
+            $workHours = $startTime !== null && $endTime !== null
+                ? round(($endTime - $startTime) * 24 - 1, 2)
+                : null;
+
+            $rows[] = [
+                'day' => $timesheetDay['day'],
+                'date' => $this->formatIndonesianDate($timesheetDay['date']),
+                'is_non_working_day' => $timesheetDay['is_non_working_day'],
+                'start_time' => $timesheetDay['start_time'],
+                'end_time' => $timesheetDay['end_time'],
+                'work_hours' => $workHours,
+                'overtime_hours' => $workHours === null ? null : max(0, round($workHours - 8, 2)),
+                'activities' => $timesheetDay['activities'],
+            ];
+        }
+
+        return ['rows' => $rows];
+    }
+
+    /**
+     * Resolve every day of the period, preferring rows edited from the preview over task-generated defaults.
+     *
+     * @param  list<array{day: int, start_time: ?string, end_time: ?string, activities: ?string}>|null  $editedRows
+     * @return list<array{day: int, date: DateTimeImmutable, is_non_working_day: bool, start_time: ?string, end_time: ?string, activities: string}>
+     */
+    private function timesheetDays(User $user, DateTimeImmutable $periodDate, ?array $editedRows = null): array
+    {
         $firstDay = $periodDate->modify('first day of this month');
         $lastDay = $periodDate->modify('last day of this month');
         $tasksByDate = $this->tasksForPeriod($user, $firstDay, $lastDay)
             ->groupBy(fn (Task $task): string => $task->due_date?->format('Y-m-d') ?? '');
-        $rows = [];
+        $editedRowsByDay = [];
+
+        foreach ($editedRows ?? [] as $editedRow) {
+            $editedRowsByDay[(int) $editedRow['day']] = $editedRow;
+        }
+
+        $days = [];
         $daysInMonth = (int) $lastDay->format('j');
 
         for ($day = 1; $day <= $daysInMonth; $day++) {
@@ -199,28 +225,47 @@ class TimesheetExportService
                 $day,
             );
             $isNonWorkingDay = $this->isRedDate($date);
-            $dayTasks = $tasksByDate->get($date->format('Y-m-d'), collect());
+            $editedRow = $editedRowsByDay[$day] ?? null;
 
-            $rows[] = [
-                'date' => $this->formatIndonesianDate($date),
+            if ($editedRow !== null) {
+                $days[] = [
+                    'day' => $day,
+                    'date' => $date,
+                    'is_non_working_day' => $isNonWorkingDay,
+                    'start_time' => $editedRow['start_time'] ?? null,
+                    'end_time' => $editedRow['end_time'] ?? null,
+                    'activities' => (string) ($editedRow['activities'] ?? ''),
+                ];
+
+                continue;
+            }
+
+            $days[] = [
+                'day' => $day,
+                'date' => $date,
                 'is_non_working_day' => $isNonWorkingDay,
                 'start_time' => $isNonWorkingDay ? null : '08:00',
                 'end_time' => $isNonWorkingDay ? null : '17:00',
-                'work_hours' => $isNonWorkingDay ? null : 8,
-                'overtime_hours' => $isNonWorkingDay ? null : 0,
-                'activities' => $dayTasks
+                'activities' => $tasksByDate->get($date->format('Y-m-d'), collect())
                     ->values()
                     ->map(fn (Task $task, int $index): string => $this->formatTaskDescription($task, $index + 1))
                     ->implode("\n\n"),
             ];
         }
 
-        return ['rows' => $rows];
+        return $days;
     }
 
-    public function canExportForPeriod(User $user, string $period): bool
+    /**
+     * Convert an "HH:MM" time into an Excel day fraction.
+     */
+    private function timeFraction(?string $time): ?float
     {
-        return $this->statusForSubmission($user, $period) === 'approved';
+        if ($time === null || preg_match('/^(?<hour>[01]\d|2[0-3]):(?<minute>[0-5]\d)$/', $time, $matches) !== 1) {
+            return null;
+        }
+
+        return ((int) $matches['hour'] * 60 + (int) $matches['minute']) / 1440;
     }
 
     public function syncSubmissionStatus(TimesheetSubmission $submission): void
@@ -365,16 +410,12 @@ class TimesheetExportService
 
     private function formatTaskDescription(Task $task, int $number): string
     {
-        $description = trim((string) ($task->description ?? ''));
-
-        if (preg_match('/(?:^|\R)Detail:\s*(?<description>.*?)(?:\R\R?Sumber osTicket:|\z)/su', $description, $matches) === 1) {
-            $description = trim($matches['description']);
-        }
+        $subject = trim((string) ($task->external_ticket_subject ?? ''));
 
         return implode("\n", [
             $number.'. '.$task->title,
             '   No tiket: '.($task->external_ticket_number ? '#'.$task->external_ticket_number : '-'),
-            '   Detail: '.($description !== '' ? $description : '-'),
+            '   Subject: '.($subject !== '' ? $subject : '-'),
         ]);
     }
 
@@ -384,7 +425,7 @@ class TimesheetExportService
             ->whereBetween('due_date', [$firstDay->format('Y-m-d'), $lastDay->format('Y-m-d')])
             ->orderBy('due_date')
             ->orderBy('sort_order')
-            ->get(['due_date', 'title', 'description', 'external_ticket_number']);
+            ->get(['due_date', 'title', 'external_ticket_number', 'external_ticket_subject']);
     }
 
     private function setCellStyle(DOMXPath $xpath, string $reference, int $styleIndex): void

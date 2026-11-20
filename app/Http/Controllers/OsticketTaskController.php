@@ -106,6 +106,7 @@ class OsticketTaskController extends Controller
                     'external_source' => 'osticket',
                     'external_ticket_id' => $ticket['ticket_id'],
                     'external_ticket_number' => $ticket['ticket_number'],
+                    'external_ticket_subject' => $this->tickets->subjectFor($ticket),
                     'external_status' => $ticket['status'],
                     'external_assignee_name' => $ticket['assigned_to'],
                     'completed_at' => $ticket['status'] === 'closed' ? now() : null,

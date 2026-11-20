@@ -17,6 +17,7 @@ it('exports private task descriptions into the timesheet template', function () 
         'title' => 'Review laporan mingguan',
         'description' => 'Perbaiki ringkasan laporan.',
         'external_ticket_number' => '608930',
+        'external_ticket_subject' => 'Laporan mingguan SIM',
         'due_date' => '2026-09-03',
     ]);
     Task::factory()->for($owner)->create([
@@ -58,9 +59,11 @@ it('exports private task descriptions into the timesheet template', function () 
         ->toContain('Dept Head IT Apps')
         ->toContain('1. ')
         ->toContain('No tiket: #608930')
-        ->toContain('Detail: Perbaiki ringkasan laporan.')
+        ->toContain('Subject: Laporan mingguan SIM')
+        ->not->toContain('Perbaiki ringkasan laporan.')
         ->toContain('2. ')
         ->toContain('No tiket: #608931')
+        ->toContain('Subject: -')
         ->not->toContain('Data milik user lain')
         ->not->toContain('TANGGAL MERAH')
         ->and($workbook)->toContain('September 2026')
@@ -100,6 +103,7 @@ it('previews a pending submission without downloading the workbook', function ()
         'title' => 'Review laporan mingguan',
         'description' => 'Periksa hasil laporan.',
         'external_ticket_number' => '608930',
+        'external_ticket_subject' => 'Laporan mingguan',
         'due_date' => '2026-09-03',
     ]);
 
@@ -112,7 +116,8 @@ it('previews a pending submission without downloading the workbook', function ()
         ->assertJsonPath('name', 'Budi TaskFlow')
         ->assertJsonPath('rows.2.start_time', '08:00')
         ->assertJsonPath('rows.2.work_hours', 8)
-        ->assertJsonPath('rows.2.activities', "1. Review laporan mingguan\n   No tiket: #608930\n   Detail: Periksa hasil laporan.")
+        ->assertJsonPath('rows.2.day', 3)
+        ->assertJsonPath('rows.2.activities', "1. Review laporan mingguan\n   No tiket: #608930\n   Subject: Laporan mingguan")
         ->assertJsonPath('rows.5.is_non_working_day', true)
         ->assertJsonPath('rows.5.start_time', null);
 });
@@ -158,24 +163,31 @@ it('places creator and supervisor signatures in separate positions', function ()
         ->and($supervisorSignature)->not->toBeFalse();
 });
 
-it('blocks subordinate timesheet download until period tasks are approved', function () use ($signatureData) {
-    $supervisor = User::factory()->atasan()->create();
+it('lets a subordinate download a timesheet before tasks are approved', function () use ($signatureData) {
+    Storage::fake('public');
+    $supervisor = User::factory()->atasan()->create(['name' => 'Dept Head TaskFlow']);
     $subordinate = User::factory()->state([
+        'role' => 'bawahan',
         'supervisor_id' => $supervisor->id,
     ])->create();
     Task::factory()->for($subordinate)->create(['due_date' => '2026-09-03']);
+    Storage::disk('public')->put('signatures/subordinate.png', base64_decode(substr($signatureData, strlen('data:image/png;base64,'))));
+    TimesheetSubmission::factory()->for($subordinate)->create([
+        'period' => '2026-09',
+        'status' => 'pending',
+        'signature_path' => 'signatures/subordinate.png',
+    ]);
 
     $this->actingAs($subordinate)
         ->post(route('tasks.export.timesheet'), [
             'department' => 'Product',
-            'client' => $supervisor->name,
+            'client' => 'SIM',
             'approved_by' => $supervisor->name,
             'approved_role' => 'Atasan',
             'period' => '2026-09',
-            'signature_data' => $signatureData,
         ])
-        ->assertStatus(422)
-        ->assertJsonPath('message', 'Timesheet belum bisa diunduh. Semua task pada periode ini harus disetujui Dept Head.');
+        ->assertOk()
+        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 });
 
 it('uses the supervisor approval signature when a subordinate downloads a timesheet', function () use ($signatureData) {

@@ -45,6 +45,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('tasks/export/timesheet', TimesheetExportController::class)->name('tasks.export.timesheet');
     Route::get('tasks/timesheet-submissions/{submission}/preview', [TimesheetSubmissionController::class, 'preview'])->name('tasks.timesheet-submissions.preview');
     Route::post('tasks/timesheet-submissions', [TimesheetSubmissionController::class, 'store'])->name('tasks.timesheet-submissions.store');
+    Route::patch('tasks/timesheet-submissions/{submission}', [TimesheetSubmissionController::class, 'update'])->name('tasks.timesheet-submissions.update');
     Route::patch('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::patch('notifications/{notification}/read', NotificationController::class)->name('notifications.read');
 

@@ -77,6 +77,16 @@ class OsticketTicketService
     /**
      * @param  array<string, mixed>  $ticket
      */
+    public function subjectFor(array $ticket): ?string
+    {
+        $subject = Str::squish((string) ($ticket['subject'] ?? ''));
+
+        return $subject === '' ? null : Str::limit($subject, 250, '...');
+    }
+
+    /**
+     * @param  array<string, mixed>  $ticket
+     */
     public function descriptionFor(array $ticket): string
     {
         $description = trim((string) ($ticket['description'] ?? ''));
