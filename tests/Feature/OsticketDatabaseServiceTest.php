@@ -5,7 +5,7 @@ use App\Services\OsticketTicketService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 
-it('loads assigned tickets directly from the osTicket database', function (): void {
+beforeEach(function (): void {
     config()->set([
         'osticket.enabled' => true,
         'osticket.source' => 'database',
@@ -139,6 +139,9 @@ it('loads assigned tickets directly from the osTicket database', function (): vo
         'body' => '<p>Perbaiki koneksi.</p>',
     ]);
 
+});
+
+it('loads assigned tickets directly from the osTicket database', function (): void {
     $preview = (new OsticketTicketService)->previewFor(
         User::factory()->make(['name' => 'Muhammad Febriansyah']),
         '2026-09',
@@ -154,4 +157,27 @@ it('loads assigned tickets directly from the osTicket database', function (): vo
     expect((new OsticketTicketService)->closuresFor([1047]))->toBe([
         1047 => ['ticket_id' => 1047, 'status' => 'open', 'closed_at' => '2026-10-03 16:45:00'],
     ]);
+});
+
+it('lists closed tickets in the month they were closed', function (): void {
+    $connection = DB::connection('osticket');
+    $connection->table('ost_ticket_status')->insert(['id' => 3, 'state' => 'closed', 'name' => 'Closed']);
+    $connection->table('ost_ticket')->insert([
+        'ticket_id' => 2001,
+        'number' => '700001',
+        'created' => '2026-09-28 08:00:00',
+        'updated' => '2026-10-03 16:45:00',
+        'closed' => '2026-10-03 16:45:00',
+        'status_id' => 3,
+        'staff_id' => 7,
+        'team_id' => 3,
+    ]);
+    $service = new OsticketTicketService;
+    $user = User::factory()->make(['name' => 'Muhammad Febriansyah']);
+
+    $septemberTicketIds = array_column($service->previewFor($user, '2026-09')['tickets'], 'ticket_id');
+    $octoberTicketIds = array_column($service->previewFor($user, '2026-10')['tickets'], 'ticket_id');
+
+    expect($septemberTicketIds)->toBe([1047])
+        ->and($octoberTicketIds)->toBe([2001]);
 });

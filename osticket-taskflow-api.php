@@ -6,7 +6,9 @@ declare(strict_types=1);
  * Read-only TaskFlow bridge for osTicket.
  *
  * Copy this file to the osTicket web root. Configure TASKFLOW_API_TOKEN in
- * the server environment, then call this file with the X-TaskFlow-Token header.
+ * the server environment, or put `<?php return 'your-token';` in
+ * taskflow-api-token.php next to this file, then call this file with the
+ * X-TaskFlow-Token header.
  */
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -88,7 +90,10 @@ function taskflowApiReadTickets(int $staffId, string $period): array
         .'LEFT JOIN '.STAFF_TABLE.' AS staff ON staff.staff_id = ticket.staff_id '
         .'LEFT JOIN '.TEAM_TABLE.' AS team ON team.team_id = ticket.team_id '
         .'WHERE ticket.staff_id = '.db_input($staffId).' '
-        .'AND ticket.created BETWEEN '.db_input($firstDay).' AND '.db_input($lastDay).' '
+        ."AND ((ticket_status.state = 'closed' AND ticket.closed IS NOT NULL "
+        .'AND ticket.closed BETWEEN '.db_input($firstDay).' AND '.db_input($lastDay).') '
+        ."OR ((ticket_status.state IS NULL OR ticket_status.state <> 'closed' OR ticket.closed IS NULL) "
+        .'AND ticket.created BETWEEN '.db_input($firstDay).' AND '.db_input($lastDay).')) '
         .'ORDER BY ticket.updated DESC, ticket.ticket_id DESC LIMIT 100';
 
     $result = db_query($sql);
@@ -121,8 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 require_once __DIR__.'/main.inc.php';
 
 $providedToken = trim((string) ($_SERVER['HTTP_X_TASKFLOW_TOKEN'] ?? ''));
+$tokenFile = __DIR__.'/taskflow-api-token.php';
 $expectedToken = trim((string) (getenv('TASKFLOW_API_TOKEN')
-    ?: ($_ENV['TASKFLOW_API_TOKEN'] ?? $_SERVER['TASKFLOW_API_TOKEN'] ?? '')));
+    ?: ($_ENV['TASKFLOW_API_TOKEN'] ?? $_SERVER['TASKFLOW_API_TOKEN'] ?? '')
+    ?: (is_file($tokenFile) ? (string) require $tokenFile : '')));
 
 if ($providedToken === '' || $expectedToken === '' || ! hash_equals($expectedToken, $providedToken)) {
     taskflowApiResponse(401, ['message' => 'Invalid or unauthorized token.']);

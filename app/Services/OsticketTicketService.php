@@ -355,7 +355,23 @@ class OsticketTicketService
             ->leftJoin($this->tableName('staff').' as staff', 'staff.staff_id', '=', 'ticket.staff_id')
             ->leftJoin($this->tableName('team').' as team', 'team.team_id', '=', 'ticket.team_id')
             ->where('ticket.staff_id', $staffId)
-            ->whereBetween('ticket.created', [$firstDay, $lastDay])
+            ->where(function ($query) use ($firstDay, $lastDay): void {
+                $query
+                    ->where(function ($closedQuery) use ($firstDay, $lastDay): void {
+                        $closedQuery->where('ticket_status.state', 'closed')
+                            ->whereNotNull('ticket.closed')
+                            ->whereBetween('ticket.closed', [$firstDay, $lastDay]);
+                    })
+                    ->orWhere(function ($otherQuery) use ($firstDay, $lastDay): void {
+                        $otherQuery
+                            ->where(function ($notClosedQuery): void {
+                                $notClosedQuery->whereNull('ticket_status.state')
+                                    ->orWhere('ticket_status.state', '!=', 'closed')
+                                    ->orWhereNull('ticket.closed');
+                            })
+                            ->whereBetween('ticket.created', [$firstDay, $lastDay]);
+                    });
+            })
             ->orderByDesc('ticket.updated')
             ->orderByDesc('ticket.ticket_id')
             ->limit(100)
