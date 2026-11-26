@@ -65,7 +65,7 @@ function taskflowApiReadTickets(int $staffId, string $period): array
     $lastDay = $periodDate->modify('last day of this month')->format('Y-m-d 23:59:59');
     $firstEntry = '(SELECT thread_id, MIN(id) AS first_entry_id FROM '.THREAD_ENTRY_TABLE." WHERE type='M' GROUP BY thread_id) AS first_entry";
 
-    $sql = 'SELECT ticket.ticket_id, ticket.number AS ticket_number, ticket.created AS created_at, '
+    $sql = 'SELECT ticket.ticket_id, ticket.number AS ticket_number, ticket.created AS created_at, ticket.closed AS closed_at, '
         .'ticket_status.state AS status, ticket_status.name AS status_label, '
         .'cdata.subject, entry.body AS description, '
         ."(SELECT COALESCE(NULLIF(TRIM(answer.value), ''), NULLIF(TRIM(answer.value_id), '')) "
@@ -102,6 +102,7 @@ function taskflowApiReadTickets(int $staffId, string $period): array
             'ticket_id' => (int) $ticket['ticket_id'],
             'ticket_number' => (string) $ticket['ticket_number'],
             'created_at' => (string) $ticket['created_at'],
+            'closed_at' => $ticket['closed_at'] ? (string) $ticket['closed_at'] : null,
             'status' => strtolower((string) $ticket['status']),
             'status_label' => (string) ($ticket['status_label'] ?: $ticket['status']),
             'subject' => (string) ($ticket['subject'] ?: ''),
@@ -125,6 +126,42 @@ $expectedToken = trim((string) (getenv('TASKFLOW_API_TOKEN')
 
 if ($providedToken === '' || $expectedToken === '' || ! hash_equals($expectedToken, $providedToken)) {
     taskflowApiResponse(401, ['message' => 'Invalid or unauthorized token.']);
+}
+
+if (isset($_GET['ticket_ids'])) {
+    $ticketIds = array_values(array_unique(array_filter(
+        array_map('intval', explode(',', (string) $_GET['ticket_ids'])),
+        static fn (int $id): bool => $id > 0,
+    )));
+
+    if ($ticketIds === [] || count($ticketIds) > 500) {
+        taskflowApiResponse(422, ['message' => 'ticket_ids must contain 1-500 ticket IDs.']);
+    }
+
+    try {
+        $result = db_query('SELECT ticket.ticket_id, ticket_status.state AS status, ticket.closed AS closed_at '
+            .'FROM '.TICKET_TABLE.' AS ticket '
+            .'LEFT JOIN '.TICKET_STATUS_TABLE.' AS ticket_status ON ticket_status.id = ticket.status_id '
+            .'WHERE ticket.ticket_id IN ('.implode(',', $ticketIds).')');
+
+        if (! $result) {
+            throw new RuntimeException('Unable to read osTicket tickets.');
+        }
+
+        $tickets = [];
+        while ($ticket = db_fetch_array($result)) {
+            $tickets[] = [
+                'ticket_id' => (int) $ticket['ticket_id'],
+                'status' => strtolower((string) $ticket['status']),
+                'closed_at' => $ticket['closed_at'] ? (string) $ticket['closed_at'] : null,
+            ];
+        }
+
+        taskflowApiResponse(200, ['tickets' => $tickets]);
+    } catch (Throwable $exception) {
+        error_log('TaskFlow osTicket API error: '.$exception->getMessage());
+        taskflowApiResponse(500, ['message' => 'Unable to read osTicket data.']);
+    }
 }
 
 $period = trim((string) ($_GET['period'] ?? date('Y-m')));

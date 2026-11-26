@@ -171,6 +171,7 @@ type OsticketTicket = {
     ticket_id: number;
     ticket_number: string;
     created_at: string;
+    closed_at?: string | null;
     status: string;
     status_label: string;
     subject: string;
@@ -2224,7 +2225,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                     <span className="mt-1 block text-sm font-medium text-[#315847]">{ticket.natural_title || ticket.subject || 'Tanpa subject'}</span>
                                                     {ticket.subject && ticket.subject !== ticket.natural_title && <span className="mt-1 block text-xs text-[#8aa097]">Subject osTicket: {ticket.subject}</span>}
                                                     <span className="mt-1 block line-clamp-2 text-xs leading-5 text-[#71877b]">{ticket.description || 'Tidak ada deskripsi ticket.'}</span>
-                                                    <span className="mt-2 block text-xs text-[#9aac9f]">Assign To: {ticket.assigned_to || 'Belum ditugaskan'} · {formatDate(ticket.created_at.slice(0, 10))}</span>
+                                                    <span className="mt-2 block text-xs text-[#9aac9f]">Assign To: {ticket.assigned_to || 'Belum ditugaskan'} · Dibuat {formatDate(ticket.created_at.slice(0, 10))}{ticket.status === 'closed' && ticket.closed_at ? ` · Ditutup ${formatDate(ticket.closed_at.slice(0, 10))}` : ''}</span>
                                                 </span>
                                             </label>
                                         ))

@@ -76,6 +76,7 @@ it('loads assigned tickets directly from the osTicket database', function (): vo
         $table->string('number');
         $table->dateTime('created');
         $table->dateTime('updated');
+        $table->dateTime('closed')->nullable();
         $table->unsignedInteger('status_id');
         $table->unsignedInteger('staff_id');
         $table->unsignedInteger('team_id');
@@ -101,6 +102,7 @@ it('loads assigned tickets directly from the osTicket database', function (): vo
         'number' => '608930',
         'created' => '2026-09-22 10:30:00',
         'updated' => '2026-09-22 10:30:00',
+        'closed' => '2026-10-03 16:45:00',
         'status_id' => 1,
         'staff_id' => 7,
         'team_id' => 3,
@@ -146,5 +148,10 @@ it('loads assigned tickets directly from the osTicket database', function (): vo
         ->and($preview['matched_staff']['name'])->toBe('Muhammad Febriansyah')
         ->and($preview['tickets'])->toHaveCount(1)
         ->and($preview['tickets'][0]['subject'])->toBe('Gallery SIM')
+        ->and($preview['tickets'][0]['closed_at'])->toBe('2026-10-03 16:45:00')
         ->and($preview['tickets'][0]['description'])->toBe('Pembuatan 5 website entitas SIMGROUP');
+
+    expect((new OsticketTicketService)->closuresFor([1047]))->toBe([
+        1047 => ['ticket_id' => 1047, 'status' => 'open', 'closed_at' => '2026-10-03 16:45:00'],
+    ]);
 });

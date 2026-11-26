@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,46 @@ class OsticketTicketService
             'closed' => 'done',
             default => 'review',
         };
+    }
+
+    /**
+     * Closed tickets are dated on the day they were closed; others on the day they were created.
+     *
+     * @param  array<string, mixed>  $ticket
+     */
+    public function taskDateFor(array $ticket): string
+    {
+        $closedAt = $this->closedAtFor($ticket);
+
+        return $closedAt !== null
+            ? $closedAt->toDateString()
+            : substr((string) ($ticket['created_at'] ?? ''), 0, 10);
+    }
+
+    /**
+     * @param  array<string, mixed>  $ticket
+     */
+    public function completedAtFor(array $ticket): ?CarbonImmutable
+    {
+        if (Str::lower((string) ($ticket['status'] ?? '')) !== 'closed') {
+            return null;
+        }
+
+        return $this->closedAtFor($ticket) ?? CarbonImmutable::now();
+    }
+
+    /**
+     * @param  array<string, mixed>  $ticket
+     */
+    public function closedAtFor(array $ticket): ?CarbonImmutable
+    {
+        $closedAt = trim((string) ($ticket['closed_at'] ?? ''));
+
+        if (Str::lower((string) ($ticket['status'] ?? '')) !== 'closed' || $closedAt === '' || str_starts_with($closedAt, '0000-00-00')) {
+            return null;
+        }
+
+        return CarbonImmutable::parse($closedAt);
     }
 
     /**
@@ -146,6 +187,80 @@ class OsticketTicketService
     }
 
     /**
+     * Read the current status and close time of specific tickets, keyed by ticket ID.
+     *
+     * @param  list<int>  $ticketIds
+     * @return array<int, array{ticket_id: int, status: string, closed_at: string|null}>
+     */
+    public function closuresFor(array $ticketIds): array
+    {
+        if ($ticketIds === [] || ! config('osticket.enabled')) {
+            return [];
+        }
+
+        $rows = match ((string) config('osticket.source', 'database')) {
+            'database' => $this->closuresFromDatabase($ticketIds),
+            'api' => $this->closuresFromApi($ticketIds),
+            default => throw new RuntimeException('Unsupported osTicket source.'),
+        };
+
+        $closures = [];
+
+        foreach ($rows as $row) {
+            $ticketId = (int) ($row['ticket_id'] ?? 0);
+            $closedAt = trim((string) ($row['closed_at'] ?? ''));
+
+            $closures[$ticketId] = [
+                'ticket_id' => $ticketId,
+                'status' => Str::lower((string) ($row['status'] ?? '')),
+                'closed_at' => $closedAt === '' ? null : $closedAt,
+            ];
+        }
+
+        return $closures;
+    }
+
+    /**
+     * @param  list<int>  $ticketIds
+     * @return list<array<string, mixed>>
+     */
+    private function closuresFromDatabase(array $ticketIds): array
+    {
+        return DB::connection((string) config('osticket.database_connection', 'osticket'))
+            ->table($this->tableName('ticket').' as ticket')
+            ->leftJoin($this->tableName('ticket_status').' as ticket_status', 'ticket_status.id', '=', 'ticket.status_id')
+            ->whereIn('ticket.ticket_id', $ticketIds)
+            ->get(['ticket.ticket_id', 'ticket_status.state as status', 'ticket.closed as closed_at'])
+            ->map(fn (object $row): array => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $ticketIds
+     * @return list<array<string, mixed>>
+     */
+    private function closuresFromApi(array $ticketIds): array
+    {
+        $payload = Http::acceptJson()
+            ->withHeaders(['X-TaskFlow-Token' => (string) config('osticket.api_token', '')])
+            ->connectTimeout(3)
+            ->timeout((int) config('osticket.timeout', 10))
+            ->get((string) config('osticket.api_url', ''), [
+                'ticket_ids' => implode(',', $ticketIds),
+            ])
+            ->throw()
+            ->json();
+
+        $tickets = is_array($payload) ? ($payload['tickets'] ?? []) : [];
+
+        if (! is_array($tickets)) {
+            throw new RuntimeException('Invalid osTicket API response.');
+        }
+
+        return array_values(array_filter($tickets, is_array(...)));
+    }
+
+    /**
      * @return array{configured: bool, user_name: string, matched_staff: array<string, mixed>|null, candidates: list<array<string, mixed>>, tickets: list<array<string, mixed>>}
      */
     private function previewFromDatabase(string $userName, string $period): array
@@ -208,7 +323,7 @@ class OsticketTicketService
     }
 
     /**
-     * @return list<array{ticket_id: int, ticket_number: string, created_at: string, status: string, status_label: string, subject: string, description: string, assigned_to: string}>
+     * @return list<array{ticket_id: int, ticket_number: string, created_at: string, closed_at: string|null, status: string, status_label: string, subject: string, description: string, assigned_to: string}>
      */
     private function findTickets(Connection $connection, int $staffId, string $period): array
     {
@@ -248,6 +363,7 @@ class OsticketTicketService
                 'ticket.ticket_id',
                 'ticket.number as ticket_number',
                 'ticket.created as created_at',
+                'ticket.closed as closed_at',
                 'ticket_status.state as status',
                 'ticket_status.name as status_label',
                 'cdata.subject',
@@ -281,6 +397,7 @@ class OsticketTicketService
                 'ticket_id' => (int) $ticket->ticket_id,
                 'ticket_number' => (string) $ticket->ticket_number,
                 'created_at' => (string) $ticket->created_at,
+                'closed_at' => $ticket->closed_at ? (string) $ticket->closed_at : null,
                 'status' => Str::lower((string) $ticket->status),
                 'status_label' => (string) ($ticket->status_label ?: $ticket->status),
                 'subject' => (string) ($ticket->subject ?: ''),
