@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { bulkApprove, update } from '@/routes/reviews';
 import { destroy } from '@/routes/reviews/submission';
+import { bulkDestroy } from '@/routes/reviews/submissions';
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
@@ -95,6 +96,9 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
     const [bulkNote, setBulkNote] = useState('');
     const [isBulkProcessing, setIsBulkProcessing] = useState(false);
     const [isDeletingSubmission, setIsDeletingSubmission] = useState(false);
+    const [checkedSubmissionIds, setCheckedSubmissionIds] = useState<string[]>([]);
+    const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const bulkCanvasRef = useRef<HTMLCanvasElement>(null);
     const drawingTarget = useRef<'single' | 'bulk' | null>(null);
@@ -120,6 +124,9 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
     const selectedTaskReviews = useMemo(() => submissions
         .flatMap((submission) => submission.tasks)
         .filter((task) => selectedIds.includes(task.review_id)), [selectedIds, submissions]);
+    const checkedSubmissions = useMemo(() => submissions
+        .filter((submission) => checkedSubmissionIds.includes(submission.id)), [checkedSubmissionIds, submissions]);
+    const checkedPendingReviewIds = checkedSubmissions.flatMap((submission) => submission.pending_review_ids);
 
     useEffect(() => {
         setPage(1);
@@ -127,7 +134,9 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
 
     useEffect(() => {
         const pendingIds = submissions.flatMap((submission) => submission.pending_review_ids);
+        const submissionIds = submissions.map((submission) => submission.id);
         setSelectedIds((ids) => ids.filter((id) => pendingIds.includes(id)));
+        setCheckedSubmissionIds((ids) => ids.filter((id) => submissionIds.includes(id)));
     }, [submissions]);
 
     useEffect(() => {
@@ -217,17 +226,34 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
     }
 
     function toggleSubmission(submission: Submission): void {
-        const ids = submission.pending_review_ids;
-        const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
-        setSelectedIds((currentIds) => allSelected
-            ? currentIds.filter((id) => !ids.includes(id))
-            : Array.from(new Set([...currentIds, ...ids])));
+        setCheckedSubmissionIds((ids) => ids.includes(submission.id)
+            ? ids.filter((id) => id !== submission.id)
+            : [...ids, submission.id]);
     }
 
     function togglePage(): void {
-        const pageIds = pageSubmissions.flatMap((submission) => submission.pending_review_ids);
-        const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
-        setSelectedIds((ids) => allSelected ? ids.filter((id) => !pageIds.includes(id)) : Array.from(new Set([...ids, ...pageIds])));
+        const pageIds = pageSubmissions.map((submission) => submission.id);
+        const allChecked = pageIds.length > 0 && pageIds.every((id) => checkedSubmissionIds.includes(id));
+        setCheckedSubmissionIds((ids) => allChecked ? ids.filter((id) => !pageIds.includes(id)) : Array.from(new Set([...ids, ...pageIds])));
+    }
+
+    function bulkDeleteSubmissions(): void {
+        const reviewIds = checkedSubmissions.flatMap((submission) => submission.review_ids);
+        if (reviewIds.length === 0) {
+            return;
+        }
+
+        setIsBulkDeleting(true);
+        router.delete(bulkDestroy().url, {
+            data: { review_ids: reviewIds },
+            preserveScroll: true,
+            onSuccess: () => {
+                setCheckedSubmissionIds([]);
+                setIsBulkDeleteOpen(false);
+            },
+            onError: (errors) => toast.error(errors.review_ids ?? 'Pengajuan gagal dihapus.'),
+            onFinish: () => setIsBulkDeleting(false),
+        });
     }
 
     function openBulkReview(reviewIds: number[] = selectedIds): void {
@@ -251,6 +277,7 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
             preserveScroll: true,
             onSuccess: () => {
                 setSelectedIds([]);
+                setCheckedSubmissionIds([]);
                 setIsBulkOpen(false);
                 setSelectedSubmission(null);
             },
@@ -277,15 +304,14 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
         submissionColumnHelper.display({
             id: 'select',
             header: () => {
-                const pageIds = pageSubmissions.flatMap((submission) => submission.pending_review_ids);
+                const pageIds = pageSubmissions.map((submission) => submission.id);
 
-                return <input type="checkbox" checked={pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id))} onChange={togglePage} aria-label="Pilih pengajuan di halaman ini" className="size-4 accent-[#2d875c]" />;
+                return <input type="checkbox" checked={pageIds.length > 0 && pageIds.every((id) => checkedSubmissionIds.includes(id))} onChange={togglePage} aria-label="Pilih pengajuan di halaman ini" className="size-4 accent-[#2d875c]" />;
             },
             cell: ({ row }) => {
                 const submission = row.original;
-                const ids = submission.pending_review_ids;
 
-                return <input type="checkbox" checked={ids.length > 0 && ids.every((id) => selectedIds.includes(id))} disabled={ids.length === 0} onChange={() => toggleSubmission(submission)} aria-label={`Pilih pengajuan ${submission.owner.name} ${formatPeriod(submission.period)}`} className="size-4 accent-[#2d875c]" />;
+                return <input type="checkbox" checked={checkedSubmissionIds.includes(submission.id)} onChange={() => toggleSubmission(submission)} aria-label={`Pilih pengajuan ${submission.owner.name} ${formatPeriod(submission.period)}`} className="size-4 accent-[#2d875c]" />;
             },
         }),
         submissionColumnHelper.accessor('period', {
@@ -307,7 +333,7 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
             header: () => <span className="block text-right">Aksi</span>,
             cell: ({ row }) => <div className="flex items-center justify-end gap-2"><Button type="button" variant="outline" onClick={() => setSelectedSubmission(row.original)} className="h-9 rounded-lg border-[#dfeae3] px-3 text-xs font-semibold text-[#2d875c] hover:bg-[#f0f8f3]">{row.original.status === 'pending' ? <><PenLine className="size-3.5" /> Review</> : 'Lihat detail'}</Button><Button type="button" variant="outline" onClick={() => setDeletingSubmission(row.original)} aria-label={`Hapus pengajuan ${row.original.owner.name} ${formatPeriod(row.original.period)}`} className="h-9 rounded-lg border-[#f1dada] px-3 text-xs font-semibold text-[#c45c5c] hover:bg-[#fff1f1]"><Trash2 className="size-3.5" /> Hapus</Button></div>,
         }),
-    ]), [pageSubmissions, selectedIds]);
+    ]), [pageSubmissions, checkedSubmissionIds]);
 
     const table = useTable({ features: reviewTableFeatures, data: pageSubmissions, columns, state: { globalFilter: query }, manualFiltering: true });
 
@@ -317,13 +343,15 @@ export default function Reviews({ submissions }: { submissions: Submission[] }) 
             <main className="mx-auto w-full max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10">
                 <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-xs font-semibold tracking-[0.18em] text-[#4b956d] uppercase">DEPT HEAD / REVIEW</p><h1 className="text-3xl font-semibold tracking-[-0.05em] text-[#173d30] sm:text-4xl">Review task Officer</h1><p className="mt-2 text-sm leading-6 text-[#7f978d]">Periksa pengajuan per periode, beri catatan, lalu setujui dengan tanda tangan.</p></div><div className="rounded-full border border-[#cfe4d7] bg-[#f0f8f3] px-4 py-2 text-xs font-semibold text-[#26724b]">{pendingCount} menunggu review</div></div>
                 <section className="overflow-hidden rounded-3xl border border-[#e8f0eb] bg-white shadow-none">
-                    <div className="flex flex-col gap-3 border-b border-[#edf3ef] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-2xl bg-[#eaf6ee] text-[#2d875c]"><ClipboardCheck className="size-5" /></span><div><h2 className="text-sm font-semibold text-[#173d30]">Daftar pengajuan</h2><p className="mt-1 text-xs text-[#8aa097]">{submissions.length} pengajuan tercatat</p></div></div>{selectedIds.length > 0 && <Button type="button" onClick={() => openBulkReview()} className="h-10 rounded-full bg-[#2d8b60] px-4 text-xs font-semibold text-white hover:bg-[#247850]"><CheckCircle2 className="size-4" /> Setujui {selectedIds.length} task</Button>}</div>
+                    <div className="flex flex-col gap-3 border-b border-[#edf3ef] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-2xl bg-[#eaf6ee] text-[#2d875c]"><ClipboardCheck className="size-5" /></span><div><h2 className="text-sm font-semibold text-[#173d30]">Daftar pengajuan</h2><p className="mt-1 text-xs text-[#8aa097]">{submissions.length} pengajuan tercatat</p></div></div>{checkedSubmissions.length > 0 && <div className="flex flex-wrap items-center gap-2">{checkedPendingReviewIds.length > 0 && <Button type="button" onClick={() => openBulkReview(checkedPendingReviewIds)} className="h-10 rounded-full bg-[#2d8b60] px-4 text-xs font-semibold text-white hover:bg-[#247850]"><CheckCircle2 className="size-4" /> Setujui {checkedPendingReviewIds.length} task</Button>}<Button type="button" variant="outline" onClick={() => setIsBulkDeleteOpen(true)} className="h-10 rounded-full border-[#f1dada] px-4 text-xs font-semibold text-[#c45c5c] hover:bg-[#fff1f1]"><Trash2 className="size-4" /> Hapus {checkedSubmissions.length} pengajuan</Button></div>}</div>
                     <div className="flex flex-col gap-3 border-b border-[#edf3ef] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7"><label className="relative w-full sm:max-w-sm"><Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-[#8aa097]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari periode, nama, atau task..." aria-label="Cari pengajuan" className="h-10 rounded-xl border-[#dfeae3] pl-10 text-sm" /></label><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} className="h-10 rounded-xl border border-[#dfeae3] bg-white px-3 text-sm text-[#557067] outline-none"><option value="all">Semua status</option><option value="pending">Menunggu</option><option value="approved">Disetujui</option><option value="rejected">Dikembalikan</option></select></div>
                     {submissions.length === 0 ? <div className="px-6 py-20 text-center"><ClipboardCheck className="mx-auto size-9 text-[#65a87d]" /><h2 className="mt-4 text-lg font-semibold text-[#315847]">Belum ada pengajuan review</h2><p className="mt-2 text-sm text-[#8aa097]">Pengajuan Officer akan muncul per periode di sini.</p></div> : <div className="overflow-x-auto"><Table className="min-w-[920px] text-left"><TableHeader className="bg-[#fbfdfb] text-xs text-[#91a49b]">{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead key={header.id} className={header.id === 'select' ? 'w-12 px-5 sm:px-7' : header.id === 'actions' ? 'text-right sm:pr-7' : undefined}>{header.isPlaceholder ? null : table.FlexRender({ header })}</TableHead>)}</TableRow>)}</TableHeader><TableBody>{table.getRowModel().rows.length > 0 ? table.getRowModel().rows.map((row) => <TableRow key={row.id} className="hover:bg-[#fbfdfb]">{row.getAllCells().map((cell) => <TableCell key={cell.id} className={cell.column.id === 'select' ? 'px-5 sm:px-7' : cell.column.id === 'submission' || cell.column.id === 'tasks' ? 'py-4' : cell.column.id === 'actions' ? 'text-right sm:pr-7' : undefined}>{table.FlexRender({ cell })}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-sm text-[#8aa097]">Pengajuan tidak ditemukan.</TableCell></TableRow>}</TableBody></Table>{filteredSubmissions.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#edf3ef] px-5 py-4 sm:px-7"><p className="text-xs text-[#8aa097]">Menampilkan {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredSubmissions.length)} dari {filteredSubmissions.length}</p><div className="flex items-center gap-1.5"><Button type="button" variant="outline" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="size-9 rounded-lg border-[#dfeae3] p-0 text-[#557067]"><ChevronLeft className="size-4" /></Button><span className="px-2 text-xs text-[#71877b]">{page}/{pageCount}</span><Button type="button" variant="outline" disabled={page === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} className="size-9 rounded-lg border-[#dfeae3] p-0 text-[#557067]"><ChevronRight className="size-4" /></Button></div></div>}</div>}
                 </section>
             </main>
 
             <Dialog open={selectedSubmission !== null} onOpenChange={(open) => !open && setSelectedSubmission(null)}><DialogContent className="max-h-[92vh] overflow-y-auto border-[#dfeae3] bg-white sm:max-w-[900px]"><DialogHeader className="border-b border-[#eaf1ec] pb-4"><DialogTitle className="text-xl tracking-[-0.03em] text-[#173d30]">Detail pengajuan</DialogTitle><DialogDescription className="leading-6 text-[#71877b]">{selectedSubmission && `${formatPeriod(selectedSubmission.period)} · ${selectedSubmission.owner.name}`}</DialogDescription></DialogHeader>{selectedSubmission && <div className="grid gap-5"><div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#f3f9f5] px-4 py-4"><div><p className="text-xs text-[#8aa097]">{selectedSubmission.owner.name}</p><h3 className="mt-1 text-lg font-semibold text-[#173d30]">{formatPeriod(selectedSubmission.period)}</h3></div><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(selectedSubmission.status)}`}>{statusLabels[selectedSubmission.status]}</span></div><div className="overflow-hidden rounded-2xl border border-[#e1eee7]"><Table><TableHeader className="bg-[#fbfdfb] text-xs text-[#91a49b]"><TableRow><TableHead>Task</TableHead><TableHead>Status</TableHead><TableHead>Tenggat</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader><TableBody>{selectedSubmission.tasks.map((task) => <TableRow key={task.review_id}><TableCell><p className="font-semibold text-[#173d30]">{task.title}</p>{task.note && <p className="mt-1 max-w-[420px] truncate text-xs text-[#8aa097]">{task.note}</p>}</TableCell><TableCell><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(task.review_status)}`}>{statusLabels[task.review_status]}</span></TableCell><TableCell className="text-xs text-[#71877b]">{formatDate(task.due_date)}</TableCell><TableCell className="text-right">{task.review_status === 'pending' ? <Button type="button" onClick={() => openReview(task, selectedSubmission)} className="h-9 rounded-lg bg-[#2d8b60] px-3 text-xs font-semibold text-white hover:bg-[#247850]"><PenLine className="size-3.5" /> Review</Button> : task.review_status === 'approved' && task.signature_url ? <a href={task.signature_url} download className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#eaf4fb] px-3 text-xs font-semibold text-[#3f79ad] hover:bg-[#dcecf9]"><Download className="size-3.5" /> Download ttd</a> : <span className="text-xs text-[#91a49b]">Selesai</span>}</TableCell></TableRow>)}</TableBody></Table></div>{selectedSubmission.pending_review_ids.length > 1 && <Button type="button" onClick={() => { setSelectedSubmission(null); openBulkReview(selectedSubmission.pending_review_ids); }} className="h-11 rounded-xl bg-[#2d875c] px-5 text-white hover:bg-[#236d49]"><CheckCircle2 className="size-4" /> Setujui semua task</Button>}</div>}</DialogContent></Dialog>
+
+            <Dialog open={isBulkDeleteOpen} onOpenChange={(open) => !isBulkDeleting && setIsBulkDeleteOpen(open)}><DialogContent className="border-[#f0d7d7] bg-white sm:max-w-[460px]"><DialogHeader><DialogTitle className="text-xl text-[#6e2929]">Hapus {checkedSubmissions.length} pengajuan?</DialogTitle><DialogDescription className="leading-6 text-[#8f6e6e]">{checkedSubmissions.length} pengajuan ({checkedSubmissions.reduce((total, submission) => total + submission.tasks.length, 0)} task) akan dihapus permanen beserta review dan tanda tangannya. Task yang masih menunggu review akan dikembalikan ke status Done.</DialogDescription></DialogHeader><ul className="max-h-48 overflow-y-auto rounded-2xl border border-[#f3e3e3] bg-[#fffafa] px-4 py-3 text-xs text-[#8f6e6e]">{checkedSubmissions.map((submission) => <li key={submission.id} className="py-1">{formatPeriod(submission.period)} · {submission.owner.name}</li>)}</ul><DialogFooter><Button type="button" variant="outline" disabled={isBulkDeleting} onClick={() => setIsBulkDeleteOpen(false)} className="h-11 rounded-xl border-[#dfeae3] text-[#557067]">Batal</Button><Button type="button" disabled={isBulkDeleting || checkedSubmissions.length === 0} onClick={bulkDeleteSubmissions} className="h-11 rounded-xl bg-[#c95353] px-5 text-white hover:bg-[#ad4141]"><Trash2 className="size-4" />{isBulkDeleting ? 'Menghapus...' : `Hapus ${checkedSubmissions.length} pengajuan`}</Button></DialogFooter></DialogContent></Dialog>
 
             <Dialog open={deletingSubmission !== null} onOpenChange={(open) => !isDeletingSubmission && !open && setDeletingSubmission(null)}><DialogContent className="border-[#f0d7d7] bg-white sm:max-w-[460px]"><DialogHeader><DialogTitle className="text-xl text-[#6e2929]">Hapus pengajuan?</DialogTitle><DialogDescription className="leading-6 text-[#8f6e6e]">{deletingSubmission && `Pengajuan ${formatPeriod(deletingSubmission.period)} milik ${deletingSubmission.owner.name} (${deletingSubmission.tasks.length} task) akan dihapus permanen beserta review dan tanda tangannya.`} Task yang masih menunggu review akan dikembalikan ke status Done.</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={isDeletingSubmission} onClick={() => setDeletingSubmission(null)} className="h-11 rounded-xl border-[#dfeae3] text-[#557067]">Batal</Button><Button type="button" disabled={isDeletingSubmission} onClick={deleteSubmission} className="h-11 rounded-xl bg-[#c95353] px-5 text-white hover:bg-[#ad4141]"><Trash2 className="size-4" />{isDeletingSubmission ? 'Menghapus...' : 'Hapus pengajuan'}</Button></DialogFooter></DialogContent></Dialog>
 

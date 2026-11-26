@@ -31,6 +31,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('reviews', [TaskReviewController::class, 'index'])->name('reviews.index');
     Route::post('reviews/submit-period', [TaskReviewController::class, 'storeForPeriod'])->name('reviews.submit-period');
     Route::post('reviews/bulk-approve', [TaskReviewController::class, 'bulkApprove'])->name('reviews.bulk-approve');
+    Route::delete('reviews/submissions/bulk', [TaskReviewController::class, 'bulkDestroySubmissions'])->name('reviews.submissions.bulk-destroy');
     Route::get('reviews/{review}/signature', [TaskReviewController::class, 'signature'])->name('reviews.signature');
     Route::delete('reviews/{review}/submission', [TaskReviewController::class, 'destroySubmission'])->name('reviews.submission.destroy');
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\BulkApproveReviewsRequest;
+use App\Http\Requests\BulkDestroyReviewSubmissionsRequest;
 use App\Http\Requests\ReviewTaskRequest;
 use App\Http\Requests\SubmitPeriodReviewRequest;
 use App\Http\Requests\SubmitTaskReviewRequest;
@@ -159,48 +160,112 @@ class TaskReviewController extends Controller
         Gate::authorize('delete', $review);
 
         $period = $review->task?->due_date?->format('Y-m');
-        $submissionReviews = DB::transaction(function () use ($request, $review, $period): Collection {
-            $reviews = TaskReview::query()
-                ->where('reviewer_id', $request->user()->id)
-                ->where('submitted_by', $review->submitted_by)
-                ->whereHas('task', function (Builder $query) use ($period): void {
-                    if ($period === null) {
-                        $query->whereNull('due_date');
+        $submissionReviews = DB::transaction(fn (): Collection => $this->deleteSubmissionReviews(
+            $request->user()->id,
+            $review->submitted_by,
+            $period,
+        ));
 
-                        return;
-                    }
-
-                    $periodStart = CarbonImmutable::createFromFormat('!Y-m', $period)->startOfMonth();
-                    $periodEnd = $periodStart->endOfMonth();
-
-                    $query->whereBetween('due_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
-                })
-                ->with('task')
-                ->lockForUpdate()
-                ->get();
-
-            foreach ($reviews as $submissionReview) {
-                if ($submissionReview->status === 'pending') {
-                    $submissionReview->task?->update(['status' => 'done']);
-                }
-
-                $submissionReview->delete();
-            }
-
-            return $reviews;
-        });
-
-        Storage::disk('public')->delete($submissionReviews->pluck('signature_path')->filter()->all());
-
-        $submissionReviews
-            ->pluck('task')
-            ->filter()
-            ->unique('id')
-            ->each(fn (Task $task) => $timesheetService->syncSubmissionForTask($task));
+        $this->cleanUpDeletedReviews($submissionReviews, $timesheetService);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Pengajuan dan seluruh review task pada periode tersebut berhasil dihapus.']);
 
         return back();
+    }
+
+    public function bulkDestroySubmissions(
+        BulkDestroyReviewSubmissionsRequest $request,
+        TimesheetExportService $timesheetService,
+    ): RedirectResponse {
+        $reviewerId = $request->user()->id;
+        $reviewIds = collect($request->validated('review_ids'))
+            ->map(fn (int|string $id): int => (int) $id)
+            ->unique();
+        $reviews = TaskReview::query()
+            ->where('reviewer_id', $reviewerId)
+            ->whereIn('id', $reviewIds)
+            ->with('task:id,due_date')
+            ->get();
+
+        if ($reviews->count() !== $reviewIds->count()) {
+            throw ValidationException::withMessages([
+                'review_ids' => 'Sebagian pengajuan tidak ditemukan untuk akun ini.',
+            ]);
+        }
+
+        $submissionKeys = $reviews
+            ->map(fn (TaskReview $review): array => [
+                'submitted_by' => $review->submitted_by,
+                'period' => $review->task?->due_date?->format('Y-m'),
+            ])
+            ->unique(fn (array $key): string => $key['submitted_by'].'|'.($key['period'] ?? 'without-period'))
+            ->values();
+
+        $deletedReviews = DB::transaction(fn (): Collection => $submissionKeys->flatMap(
+            fn (array $key): Collection => $this->deleteSubmissionReviews($reviewerId, $key['submitted_by'], $key['period']),
+        ));
+
+        $this->cleanUpDeletedReviews($deletedReviews, $timesheetService);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $submissionKeys->count().' pengajuan beserta seluruh review task-nya berhasil dihapus.',
+        ]);
+
+        return back();
+    }
+
+    /**
+     * Delete every review in one submission (subordinate + period) and return Done status to pending tasks.
+     *
+     * @return Collection<int, TaskReview>
+     */
+    private function deleteSubmissionReviews(int $reviewerId, int $submittedBy, ?string $period): Collection
+    {
+        $reviews = TaskReview::query()
+            ->where('reviewer_id', $reviewerId)
+            ->where('submitted_by', $submittedBy)
+            ->whereHas('task', function (Builder $query) use ($period): void {
+                if ($period === null) {
+                    $query->whereNull('due_date');
+
+                    return;
+                }
+
+                $periodStart = CarbonImmutable::createFromFormat('!Y-m', $period)->startOfMonth();
+                $periodEnd = $periodStart->endOfMonth();
+
+                $query->whereBetween('due_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
+            })
+            ->with('task')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($reviews as $submissionReview) {
+            if ($submissionReview->status === 'pending') {
+                $submissionReview->task?->update(['status' => 'done']);
+            }
+
+            $submissionReview->delete();
+        }
+
+        return $reviews;
+    }
+
+    /**
+     * Remove stored signatures and resync timesheet submissions after reviews are deleted.
+     *
+     * @param  Collection<int, TaskReview>  $deletedReviews
+     */
+    private function cleanUpDeletedReviews(Collection $deletedReviews, TimesheetExportService $timesheetService): void
+    {
+        Storage::disk('public')->delete($deletedReviews->pluck('signature_path')->filter()->all());
+
+        $deletedReviews
+            ->pluck('task')
+            ->filter()
+            ->unique('id')
+            ->each(fn (Task $task) => $timesheetService->syncSubmissionForTask($task));
     }
 
     public function update(

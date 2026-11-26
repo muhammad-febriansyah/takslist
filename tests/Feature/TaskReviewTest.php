@@ -232,6 +232,70 @@ it('allows a supervisor to bulk approve pending reviews with one signature', fun
     Storage::disk('public')->assertExists($secondReview->signature_path);
 });
 
+it('bulk deletes whole submissions for the selected reviews and returns pending tasks to done', function () {
+    Storage::fake('public');
+    Storage::disk('public')->put('signatures/approved.png', 'signature');
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $firstSubordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $supervisor->id])->create();
+    $secondSubordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $supervisor->id])->create();
+    $pendingTask = Task::factory()->for($firstSubordinate)->create(['status' => 'review', 'due_date' => '2026-09-10']);
+    $approvedTask = Task::factory()->for($firstSubordinate)->create(['status' => 'done', 'due_date' => '2026-09-20']);
+    $otherPeriodTask = Task::factory()->for($firstSubordinate)->create(['status' => 'review', 'due_date' => '2026-10-05']);
+    $secondPendingTask = Task::factory()->for($secondSubordinate)->create(['status' => 'review', 'due_date' => '2026-09-12']);
+    $pendingReview = TaskReview::factory()->create(['task_id' => $pendingTask->id, 'submitted_by' => $firstSubordinate->id, 'reviewer_id' => $supervisor->id]);
+    $approvedReview = TaskReview::factory()->create([
+        'task_id' => $approvedTask->id,
+        'submitted_by' => $firstSubordinate->id,
+        'reviewer_id' => $supervisor->id,
+        'status' => 'approved',
+        'signature_path' => 'signatures/approved.png',
+    ]);
+    $otherPeriodReview = TaskReview::factory()->create(['task_id' => $otherPeriodTask->id, 'submitted_by' => $firstSubordinate->id, 'reviewer_id' => $supervisor->id]);
+    $secondReview = TaskReview::factory()->create(['task_id' => $secondPendingTask->id, 'submitted_by' => $secondSubordinate->id, 'reviewer_id' => $supervisor->id]);
+
+    $this->actingAs($supervisor)
+        ->delete(route('reviews.submissions.bulk-destroy'), [
+            'review_ids' => [$pendingReview->id, $secondReview->id],
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->assertModelMissing($pendingReview);
+    $this->assertModelMissing($approvedReview);
+    $this->assertModelMissing($secondReview);
+    $this->assertModelExists($otherPeriodReview);
+    expect($pendingTask->refresh()->status)->toBe('done')
+        ->and($secondPendingTask->refresh()->status)->toBe('done')
+        ->and($otherPeriodTask->refresh()->status)->toBe('review');
+    Storage::disk('public')->assertMissing('signatures/approved.png');
+});
+
+it('rejects bulk deleting submissions that belong to another supervisor', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $otherSupervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $subordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $otherSupervisor->id])->create();
+    $task = Task::factory()->for($subordinate)->create(['status' => 'review']);
+    $review = TaskReview::factory()->create(['task_id' => $task->id, 'submitted_by' => $subordinate->id, 'reviewer_id' => $otherSupervisor->id]);
+
+    $this->actingAs($supervisor)
+        ->delete(route('reviews.submissions.bulk-destroy'), ['review_ids' => [$review->id]])
+        ->assertSessionHasErrors(['review_ids' => 'Sebagian pengajuan tidak ditemukan untuk akun ini.']);
+
+    $this->assertModelExists($review);
+    expect($task->refresh()->status)->toBe('review');
+});
+
+it('forbids a subordinate from bulk deleting submissions', function () {
+    $subordinate = User::factory()->state(['role' => 'bawahan'])->create();
+    $review = TaskReview::factory()->create(['submitted_by' => $subordinate->id]);
+
+    $this->actingAs($subordinate)
+        ->delete(route('reviews.submissions.bulk-destroy'), ['review_ids' => [$review->id]])
+        ->assertForbidden();
+
+    $this->assertModelExists($review);
+});
+
 it('requires a note when a supervisor returns a task', function () {
     $supervisor = User::factory()->state(['role' => 'atasan'])->create();
     $subordinate = User::factory()->state([
