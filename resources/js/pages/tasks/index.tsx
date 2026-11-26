@@ -77,6 +77,7 @@ type Task = {
     owner: { id: number; name: string } | null;
     supervisor: { id: number; name: string } | null;
     can_edit: boolean;
+    can_bulk_manage: boolean;
     can_submit_review: boolean;
     description: string | null;
     external_ticket_number: string | null;
@@ -363,6 +364,7 @@ function TaskCard({
     onEdit,
     onDelete,
     canEdit,
+    canSelect,
 }: {
     task: Task;
     isDragging: boolean;
@@ -376,6 +378,7 @@ function TaskCard({
     onEdit: (task: Task) => void;
     onDelete: (task: Task) => void;
     canEdit: boolean;
+    canSelect: boolean;
 }) {
     const priority = priorityStyles[task.priority];
     const description = taskDescriptionPreview(task.description, task.external_ticket_number);
@@ -410,7 +413,7 @@ function TaskCard({
                     onChange={() => onToggleSelect(task.id)}
                     onClick={(event) => event.stopPropagation()}
                     aria-label={`Pilih ${task.title}`}
-                    disabled={!canEdit}
+                    disabled={!canSelect}
                     className="mt-0.5 size-4 shrink-0 accent-[#2d875c]"
                 />
                 <div hidden={!canEdit} className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 opacity-70 transition group-hover:opacity-100">
@@ -802,7 +805,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                     type="checkbox"
                     checked={paginatedTasks.length > 0 && paginatedTasks.every((task) => selectedTaskIds.includes(task.id))}
                     onChange={() => {
-                        const pageIds = paginatedTasks.filter((task) => task.can_edit).map((task) => task.id);
+                        const pageIds = paginatedTasks.filter((task) => task.can_bulk_manage).map((task) => task.id);
                         const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedTaskIds.includes(id));
 
                         setSelectedTaskIds((ids) => allSelected
@@ -817,7 +820,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                 <input
                     type="checkbox"
                     checked={selectedTaskIds.includes(row.original.id)}
-                    disabled={!row.original.can_edit}
+                    disabled={!row.original.can_bulk_manage}
                     onChange={() => toggleTaskSelection(row.original.id)}
                     aria-label={`Pilih ${row.original.title}`}
                     className="size-4 accent-[#2d875c]"
@@ -1291,7 +1294,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     }
 
     function toggleTaskSelection(taskId: number): void {
-        if (!boardTasks.find((task) => task.id === taskId)?.can_edit) {
+        if (!boardTasks.find((task) => task.id === taskId)?.can_bulk_manage) {
             return;
         }
 
@@ -1303,7 +1306,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
     }
 
     function toggleVisibleTasks(): void {
-        const visibleIds = filteredTasks.filter((task) => task.can_edit).map((task) => task.id);
+        const visibleIds = filteredTasks.filter((task) => task.can_bulk_manage).map((task) => task.id);
         const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) =>
             selectedTaskIds.includes(id),
         );
@@ -1317,7 +1320,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
 
     function toggleColumnTasks(status: Task['status']): void {
         const columnIds = filteredTasks
-            .filter((task) => task.status === status && task.can_edit)
+            .filter((task) => task.status === status && task.can_bulk_manage)
             .map((task) => task.id);
         const allColumnSelected = columnIds.length > 0 && columnIds.every((id) =>
             selectedTaskIds.includes(id),
@@ -1795,8 +1798,8 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                     onClick={toggleVisibleTasks}
                                     className="text-xs font-semibold text-[#236d49] hover:underline"
                                 >
-                                    {filteredTasks.filter((task) => task.can_edit).length > 0
-                                    && filteredTasks.filter((task) => task.can_edit).every((task) =>
+                                    {filteredTasks.filter((task) => task.can_bulk_manage).length > 0
+                                    && filteredTasks.filter((task) => task.can_bulk_manage).every((task) =>
                                         selectedTaskIds.includes(task.id),
                                     )
                                         ? 'Batalkan pilih semua'
@@ -1873,10 +1876,10 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                 <div className="flex items-center gap-2">
                                                     <input
                                                         type="checkbox"
-                                                        checked={columnTasks.some((task) => task.can_edit)
-                                                            && columnTasks.filter((task) => task.can_edit).every((task) => selectedTaskIds.includes(task.id))}
+                                                        checked={columnTasks.some((task) => task.can_bulk_manage)
+                                                            && columnTasks.filter((task) => task.can_bulk_manage).every((task) => selectedTaskIds.includes(task.id))}
                                                         onChange={() => toggleColumnTasks(column.key)}
-                                                        disabled={!columnTasks.some((task) => task.can_edit)}
+                                                        disabled={!columnTasks.some((task) => task.can_bulk_manage)}
                                                         aria-label={`Pilih semua task ${column.label}`}
                                                         title={`Pilih semua task ${column.label}`}
                                                         className="size-4 accent-[#2d875c]"
@@ -1949,6 +1952,7 @@ export default function Tasks({ tasks, search: initialSearch = '', user_id: init
                                                         onEdit={openEditDialog}
                                                         onDelete={setDeletingTask}
                                                         canEdit={task.can_edit}
+                                                        canSelect={task.can_bulk_manage}
                                                     />
                                                 ))}
                                                 {columnTasks.length === 0 && (

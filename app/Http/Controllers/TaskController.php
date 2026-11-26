@@ -84,6 +84,7 @@ class TaskController extends Controller
                         : null,
                 ] : null,
                 'can_edit' => $task->user_id === $user->id && ! $user->isAdmin(),
+                'can_bulk_manage' => ! $user->isAdmin(),
                 'can_submit_review' => $task->user_id === $user->id
                     && $user->isBawahan()
                     && $user->supervisor_id !== null

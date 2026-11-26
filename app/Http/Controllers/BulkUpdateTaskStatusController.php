@@ -27,21 +27,21 @@ class BulkUpdateTaskStatusController extends Controller
             ->unique()
             ->sort()
             ->values();
-        $ownedTaskIds = Task::ownedBy($user)
+        $manageableTaskIds = Task::visibleTo($user)
             ->whereIn('id', $taskIds)
             ->pluck('id')
             ->map(fn (int|string $id): int => (int) $id)
             ->sort()
             ->values();
 
-        if ($ownedTaskIds->all() !== $taskIds->sort()->all()) {
+        if ($manageableTaskIds->all() !== $taskIds->sort()->all()) {
             throw ValidationException::withMessages([
                 'task_ids' => 'Sebagian task tidak ditemukan untuk akun ini.',
             ]);
         }
 
         $status = $validated['status'];
-        Task::ownedBy($user)
+        Task::visibleTo($user)
             ->whereIn('id', $taskIds)
             ->update([
                 'status' => $status,

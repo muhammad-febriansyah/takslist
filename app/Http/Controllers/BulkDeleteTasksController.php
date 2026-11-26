@@ -23,20 +23,20 @@ class BulkDeleteTasksController extends Controller
             ->unique()
             ->sort()
             ->values();
-        $ownedTaskIds = Task::ownedBy($user)
+        $manageableTaskIds = Task::visibleTo($user)
             ->whereIn('id', $taskIds)
             ->pluck('id')
             ->map(fn (int|string $id): int => (int) $id)
             ->sort()
             ->values();
 
-        if ($ownedTaskIds->all() !== $taskIds->sort()->all()) {
+        if ($manageableTaskIds->all() !== $taskIds->sort()->all()) {
             throw ValidationException::withMessages([
                 'task_ids' => 'Sebagian task tidak ditemukan untuk akun ini.',
             ]);
         }
 
-        Task::ownedBy($user)->whereIn('id', $taskIds)->delete();
+        Task::visibleTo($user)->whereIn('id', $taskIds)->delete();
 
         Inertia::flash('toast', [
             'type' => 'success',

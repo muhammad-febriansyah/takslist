@@ -2,6 +2,7 @@
 
 use App\Models\Task;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 
 it('allows owner to update and delete a task', function () {
     $user = User::factory()->create();
@@ -112,4 +113,68 @@ it('rejects bulk status updates containing another users task', function () {
 
     expect($ownedTask->refresh()->status)->toBe('todo')
         ->and($otherTask->refresh()->status)->toBe('todo');
+});
+
+it('lets a dept head bulk delete tasks of their own subordinates', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $subordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $supervisor->id])->create();
+    $firstTask = Task::factory()->for($subordinate)->create(['status' => 'review']);
+    $secondTask = Task::factory()->for($subordinate)->create(['status' => 'review']);
+
+    $this->actingAs($supervisor)
+        ->delete(route('tasks.bulk-destroy'), [
+            'task_ids' => [$firstTask->id, $secondTask->id],
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->assertModelMissing($firstTask);
+    $this->assertModelMissing($secondTask);
+});
+
+it('lets a dept head bulk move subordinate tasks to another status', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $subordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $supervisor->id])->create();
+    $task = Task::factory()->for($subordinate)->create(['status' => 'review']);
+
+    $this->actingAs($supervisor)
+        ->patch(route('tasks.bulk-status'), [
+            'task_ids' => [$task->id],
+            'status' => 'done',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($task->refresh()->status)->toBe('done')
+        ->and($task->completed_at)->not->toBeNull();
+});
+
+it('rejects dept head bulk actions on tasks of another supervisors subordinate', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $otherSupervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $otherSubordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $otherSupervisor->id])->create();
+    $task = Task::factory()->for($otherSubordinate)->create(['status' => 'review']);
+
+    $this->actingAs($supervisor)
+        ->patch(route('tasks.bulk-status'), ['task_ids' => [$task->id], 'status' => 'done'])
+        ->assertSessionHasErrors(['task_ids' => 'Sebagian task tidak ditemukan untuk akun ini.']);
+
+    $this->actingAs($supervisor)
+        ->delete(route('tasks.bulk-destroy'), ['task_ids' => [$task->id]])
+        ->assertSessionHasErrors(['task_ids' => 'Sebagian task tidak ditemukan untuk akun ini.']);
+
+    $this->assertModelExists($task);
+    expect($task->refresh()->status)->toBe('review');
+});
+
+it('marks subordinate tasks as bulk manageable for their dept head', function () {
+    $supervisor = User::factory()->state(['role' => 'atasan'])->create();
+    $subordinate = User::factory()->state(['role' => 'bawahan', 'supervisor_id' => $supervisor->id])->create();
+    Task::factory()->for($subordinate)->create(['status' => 'review', 'due_date' => now()->toDateString()]);
+
+    $this->actingAs($supervisor)
+        ->get(route('tasks.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('tasks.0.can_bulk_manage', true)
+            ->where('tasks.0.can_edit', false));
 });
